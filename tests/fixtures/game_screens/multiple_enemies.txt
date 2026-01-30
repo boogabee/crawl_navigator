@@ -1,0 +1,47 @@
+=== Screen #90 (Full Visual State) ===
+Timestamp: 18:59:34.643
+Move: #85
+Action: Move 85: Sending '	'
+================================================================================
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                     gtyojkkx the Covered                                                             │
+│                                     Human                                                                            │
+│                                     Health: 20/24     ====================----                                       │
+│          #......#                   Magic:  2/2       ========================                                       │
+│         ##......#         ######    AC:  6            Str: 16                                                        │
+│         .....K..#         #.....    EV:  8            Int: 8                                                         │
+│         ........#         #.....    SH:  4            Dex: 12                                                        │
+│         #.......#         #.....    XL:  2 Next: 55%  Place: Dungeon:1                                               │
+│         #.......#####     #.....    Noise: ---------  Time: 578.6 (1.0)                                              │
+│         #...........#     #...##    a) +0 war axe                                                                    │
+│              #J@....#     #.....    Nothing quivered                                                                 │
+│              #......#  ####...##                                                                                     │
+│              #....$.#  #......##                                                                                     │
+│           ####......#  #......##    J   endoplasm                                                                    │
+│           #.........#  #......##    K   kobold (missile)                                                             │
+│         ....#..######  #......#                                                                                      │
+│         ..##.##.##     #......#                                                                                      │
+│           #.⌠ ##.##    #......#                                                                                      │
+│           ##  ###.######......#                                                                                      │
+│             #.#.#...#.........#                                                                                      │
+│              #.8.#..#.#.......#                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│ An endoplasm comes into view.                                                                                        │
+│_The endoplasm quivers.                                                                                               │
+│_You see here 10 gold pieces.                                                                                         │
+│ A kobold comes into view. It is wielding a +0 club.                                                                  │
+│ The kobold shouts!                                                                                                   │
+│_The kobold throws a stone. The stone hits you.                                                                       │
+│_The kobold throws a stone. The stone barely misses you.                                                              │
+│ The endoplasm freezes you.                                                                                           │
+│_You are frozen.                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

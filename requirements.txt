@@ -1,0 +1,8 @@
+pyte>=0.8.1
+python-dotenv>=0.19.0
+python-statemachine>=2.5.0
+blessed>=1.20.0
+pytest>=7.0.0
+pytest-asyncio>=0.20.0
+loguru>=0.6.0
+pexpect>=4.8.0

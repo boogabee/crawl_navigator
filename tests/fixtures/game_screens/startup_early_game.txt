@@ -1,0 +1,47 @@
+=== Screen #11 (Full Visual State) ===
+Timestamp: 18:49:34.560
+Move: #6
+Action: Move 6: Sending '	'
+================================================================================
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                     gtyojkkx the Shield-Bearer                                                       │
+│                                     Human                                                                            │
+│                                     Health: 18/18     ========================                                       │
+│              .....                  Magic:  1/1       ========================                                       │
+│               ....   ..             AC:  6            Str: 16                                                        │
+│                ..#  #.#.#           EV:  8            Int: 8                                                         │
+│           ######.####.#.#           SH:  4            Dex: 12                                                        │
+│           #.........#.#.#           XL:  1 Next:  0%  Place: Dungeon:1                                               │
+│           #.........#.#.#####       Noise: ---------  Time: 13.0 (1.0)                                               │
+│           #.................#       a) +0 war axe                                                                    │
+│           #...K@............##      Nothing quivered                                                                 │
+│           #...................                                                                                       │
+│           #...................                                                                                       │
+│           #.........##'###+##       K   kobold                                                                       │
+│           #.........#...#...#                                                                                        │
+│           #....#.#..#...#.>.#                                                                                        │
+│          ...####....#...#...#                                                                                        │
+│          ###   ####.#.<.#.>.#                                                                                        │
+│                   #.#...#...#                                                                                        │
+│                     #...#.>.#                                                                                        │
+│                     #...#...#                                                                                        │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│ They say the Orb of Zot lies within this dungeon, but they say a lot of things.                                      │
+│ Press ? for a list of commands and other information.                                                                │
+│_Found a staircase leading out of the dungeon and three stone staircases leading down.                                │
+│_Unknown command.                                                                                                     │
+│_No target in view!                                                                                                   │
+│_You open the door.                                                                                                   │
+│_There is an open door here.                                                                                          │
+│_You now have 9 gold pieces.                                                                                          │
+│_A kobold comes into view. It is wielding a +0 dagger.                                                                │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

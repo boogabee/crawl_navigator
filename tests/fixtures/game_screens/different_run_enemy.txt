@@ -1,0 +1,47 @@
+=== Screen #11 (Full Visual State) ===
+Timestamp: 05:37:22.807
+Move: #6
+Action: Move 6: Sending '	'
+================================================================================
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                     zmkjah the Shield-Bearer                                                         │
+│                                     Human                                                                            │
+│                                     Health: 17/18     ======================--                                       │
+│             ..#                     Magic:  1/1       ========================                                       │
+│             #.#                     AC:  6            Str: 16                                                        │
+│             #.#                     EV:  8            Int: 8                                                         │
+│            ##.#                     SH:  4            Dex: 12                                                        │
+│           ##..#                     XL:  1 Next:  0%  Place: Dungeon:1                                               │
+│           #...#######               Noise: =--------  Time: 22.4 (1.4)                                               │
+│           #...#)....#               a) +0 war axe                                                                    │
+│           +...'@r>..#               Nothing quivered                                                                 │
+│   #       ##.##.....#                                                                                                │
+│   #.###+####.####+###                                                                                                │
+│   #......##...#                     r   quokka                                                                       │
+│   #......##...#                                                                                                      │
+│     ####'###.##                                                                                                      │
+│     #.....##.##                                                                                                      │
+│     #..<..'...+                                                                                                      │
+│     #.....'...#                                                                                                      │
+│     #######...#                                                                                                      │
+│           ##..#                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│_There is an open door here.                                                                                          │
+│_You open the large door.                                                                                             │
+│_There is a large open door here.                                                                                     │
+│ You open the door.                                                                                                   │
+│_A quokka comes into view.                                                                                            │
+│_Found a hand axe. Found a stone staircase leading down.                                                              │
+│_There is an open door here.                                                                                          │
+│_The quokka bites you.                                                                                                │
+│_You closely miss the quokka. You block the quokka's attack.                                                          │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
