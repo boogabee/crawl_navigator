@@ -1243,6 +1243,15 @@ class DCSSBot:
             
             logger.info(f"Enemy detected: {enemy_name} at {health_percentage:.1f}% health! Using autofight (Tab)")
             self.consecutive_rest_actions = 0  # Reset rest counter on combat
+            
+            # Check if autofight failed on a previous turn with "No reachable target in view!"
+            # This means the enemy is visible but not in melee range - use movement instead
+            clean_output = self._clean_ansi(output) if output else ""
+            if 'no reachable target in view' in clean_output.lower() and self.last_action_sent == '\t':
+                logger.info(f"⚔️ Autofight failed (no reachable target) - enemy {enemy_name} out of melee range. Using movement instead...")
+                direction = self._find_direction_to_enemy(output)
+                return self._return_action(direction, f"Combat: Moving to reach {enemy_name} (autofight unreachable)")
+            
             return self._return_action('\t', f"Autofight - {enemy_name} in range")  # Tab = autofight
         
         # Even without Time display, if we have gameplay indicators proceed
@@ -1595,11 +1604,17 @@ class DCSSBot:
                 
                 # Reject if symbols are common English words (message artifacts, not creatures)
                 # e.g., "Found 19 sling" has symbols="Found" (a message), not creatures
-                invalid_symbols = ['Found', 'You', 'The', 'This', 'That', 'Your', 'And', 'Are', 'But', 'Can', 'For', 'Have', 'Here', 'Just', 'Know', 'Like', 'Make', 'More', 'Now', 'Only', 'Out', 'Over', 'Some', 'Such', 'Take', 'Want', 'Way', 'What', 'When', 'Will', 'With', 'Would', 'have']
+                # Also reject common item names that appear in pickup messages like "here 16x arrows"
+                invalid_symbols = ['Found', 'You', 'The', 'This', 'That', 'Your', 'And', 'Are', 'But', 'Can', 'For', 'Have', 'Here', 'Just', 'Know', 'Like', 'Make', 'More', 'Now', 'Only', 'Out', 'Over', 'Some', 'Such', 'Take', 'Want', 'Way', 'What', 'When', 'Will', 'With', 'Would', 'have', 'here']
                 if symbols in invalid_symbols:
                     continue
                 
                 # Validate the entry
+                # Reject common items that might appear in "item found" messages
+                item_keywords = ['arrow', 'dart', 'potion', 'scroll', 'ring', 'amulet', 'wand', 'staff', 'weapon', 'armour', 'armor', 'item', 'stone', 'food', 'poisoned', 'cursed', 'blessed']
+                if any(item in creature_name.lower() for item in item_keywords):
+                    continue
+                    
                 if (creature_name and
                     creature_name not in ['place', 'noise', 'time', 'ac', 'ev', 'sh', 'xl', 'next', 'magic', 'health', 'str', 'int', 'dex', 'a', 'o', 'b'] and
                     not any(char in creature_name for char in '#.+=~,|-')):
