@@ -70,3 +70,9 @@ def game_screen_multiple_enemies(game_screens):
 def game_screen_different_run(game_screens):
     """Screen from a different game run with enemy (quokka)."""
     return game_screens.get("different_run_enemy", "")
+
+
+@pytest.fixture
+def game_screen_grouped_lowercase_goblins(game_screens):
+    """Screen with grouped lowercase creature symbols (gg  2 goblins)."""
+    return game_screens.get("grouped_lowercase_goblins", "")

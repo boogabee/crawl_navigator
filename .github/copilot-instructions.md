@@ -180,7 +180,7 @@ if self.last_screen:
 ### Testing
 - Located in `tests/` with conftest.py fixtures
 - Run with `bash run_tests.sh` or `pytest tests/`
-- All 70 tests must pass (as of v1.3: 59 original + 11 real game screen validation tests)
+- All 75 tests must pass (as of v1.4: 59 original + 16 real game screen validation tests)
 - Mock fixtures in conftest: `char_creation_state_machine`, `game_state_parser`, `game_state_tracker`
 - Real game screen fixtures: `tests/fixtures/game_screens/` - 4 representative game states
 
@@ -242,6 +242,12 @@ Or individual test: `pytest tests/test_bot.py::test_character_creation_flow -v`.
 
 ## Version History & Recent Fixes
 
+- **v1.4** (Jan 30, 2026): Screen logging error handling + enemy detection improvements:
+  - Added comprehensive error handling to `_save_debug_screen()` and `_get_screen_capture()` with logging
+  - Fixed lowercase grouped creature detection (e.g., "gg  2 goblins" now correctly detected)
+  - Fixed message artifacts being parsed as enemies ("Found 19 sling" no longer triggers combat)
+  - Added validation to reject message keywords from creature symbol lists
+  - All 75 tests passing (+4 new tests for grouped creatures and item filtering)
 - **v1.3** (Jan 30, 2026): TUI-First Architecture - Removed all message stream dependency, enemy detection now solely based on TUI monsters section
 - **v1.2** (Jan 29, 2026): Fixed undefined `complete_screen` crash, contradictory gameplay state logic, added per-menu screenshots
 - **v1.1** (Jan 28): Fixed PTY timeout bug (v1.0 exit after ~0.5s instead of full timeout)

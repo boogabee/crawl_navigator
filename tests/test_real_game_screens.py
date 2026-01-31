@@ -134,3 +134,53 @@ class TestScreenParsing:
         creature_name = match.group(2).strip()
         assert creature_name == "ball python", f"Expected 'ball python', got '{creature_name}'"
 
+    def test_grouped_lowercase_creature_symbols(self, game_screen_grouped_lowercase_goblins):
+        """Test extraction of grouped creatures with lowercase symbols (gg  2 goblins)."""
+        bot = DCSSBot()
+        
+        # Should extract goblins from grouped lowercase format
+        enemies = bot._extract_all_enemies_from_tui(game_screen_grouped_lowercase_goblins)
+        
+        assert len(enemies) > 0, "Should find enemies in grouped lowercase goblin screen"
+        assert "goblins" in enemies, f"Expected 'goblins' in grouped lowercase format, got {enemies}"
+
+    def test_detect_enemy_with_grouped_lowercase_goblins(self, game_screen_grouped_lowercase_goblins):
+        """Test that enemy detection works with grouped lowercase creature symbols."""
+        bot = DCSSBot()
+        
+        # Should detect that there are enemies
+        detected, enemy_name = bot._detect_enemy_in_range(game_screen_grouped_lowercase_goblins)
+        
+        assert detected is True, "Should detect enemy with grouped lowercase goblins"
+        assert enemy_name == "goblins", f"Expected enemy name 'goblins', got '{enemy_name}'"
+    def test_message_artifacts_not_detected_as_enemies(self):
+        """Test that message artifacts like 'Found 19 sling bullets' are not detected as monsters."""
+        bot = DCSSBot()
+        
+        # Message lines containing "Found" should not be parsed as creature entries
+        test_screen = """
+│_Found 19 sling bullets.
+│_No target in view!
+        """
+        
+        enemies = bot._extract_all_enemies_from_tui(test_screen)
+        
+        # Should not detect "sling" as an enemy
+        assert "sling" not in enemies, f"Should not detect 'sling' from message artifact, got {enemies}"
+        assert len(enemies) == 0, f"Should detect no enemies in message-only screen, got {enemies}"
+
+    def test_item_pickup_messages_dont_trigger_combat(self):
+        """Test that item pickup messages are not confused with enemy presence."""
+        bot = DCSSBot()
+        
+        # When player picks up items after killing a creature, the message may contain
+        # patterns that look like "Found X item_name" - this should not trigger combat
+        test_cases = [
+            ("│_Found 19 sling bullets.", "sling"),
+            ("│_Found 8 gold pieces.", "gold"),
+            ("│_Found a potion of healing.", "potion"),
+        ]
+        
+        for message_line, item_name in test_cases:
+            enemies = bot._extract_all_enemies_from_tui(message_line)
+            assert item_name not in enemies, f"Item '{item_name}' incorrectly detected as enemy in: {message_line}"

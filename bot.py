@@ -134,6 +134,7 @@ class DCSSBot:
         self.items_found = []
         self.enemies_encountered = set()
         self.level_ups_gained = []
+        self.last_level_up_processed = 0  # Track last level we processed level-up for (avoid re-detecting same message)
         
         # Initialize log file
         logs_dir = "logs"
@@ -281,14 +282,20 @@ class DCSSBot:
         Returns:
             The visual screen as it appears (ANSI codes cleaned for readability)
         """
-        # Use screen buffer to get accumulated visual state
-        visual = self.screen_buffer.get_screen_text()
-        
-        # If buffer is mostly empty, fall back to showing cleaned last_screen
-        if not visual.strip():
-            return self._clean_ansi(self.last_screen) if self.last_screen else "(empty)"
-        
-        return visual
+        try:
+            # Use screen buffer to get accumulated visual state
+            visual = self.screen_buffer.get_screen_text()
+            
+            # If buffer is mostly empty, fall back to showing cleaned last_screen
+            if not visual.strip():
+                return self._clean_ansi(self.last_screen) if self.last_screen else "(empty)"
+            
+            return visual
+        except Exception as e:
+            logger.error(f"Failed to get screen capture: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return f"(Screen capture error: {e})"
 
     def _display_tui_to_user(self, action: str = "") -> None:
         """
@@ -380,78 +387,87 @@ class DCSSBot:
         Returns:
             The filename where the screen was saved
         """
-        self.screen_counter += 1
-        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        
-        # Create numbered filenames
-        screen_num = f"{self.screen_counter:04d}"
-        raw_file = f"{screen_num}_raw.txt"
-        clean_file = f"{screen_num}_clean.txt"
-        visual_file = f"{screen_num}_visual.txt"
-        raw_path = os.path.join(self.debug_screens_dir, raw_file)
-        clean_path = os.path.join(self.debug_screens_dir, clean_file)
-        visual_path = os.path.join(self.debug_screens_dir, visual_file)
-        
-        # Get the full visual screen from buffer
-        visual_screen = self._get_screen_capture()
-        
-        # Save raw screen with ANSI codes
-        with open(raw_path, 'w', encoding='utf-8') as f:
-            f.write(f"=== Screen #{self.screen_counter} ===\n")
-            f.write(f"Timestamp: {timestamp}\n")
-            f.write(f"Move: #{self.move_count}\n")
-            f.write(f"Action: {action}\n")
-            f.write("=" * 80 + "\n\n")
-            f.write(screen)
-        
-        # Save cleaned screen (no ANSI codes)
-        clean_screen = self._clean_ansi(screen)
-        with open(clean_path, 'w', encoding='utf-8') as f:
-            f.write(f"=== Screen #{self.screen_counter} (Cleaned Delta) ===\n")
-            f.write(f"Timestamp: {timestamp}\n")
-            f.write(f"Move: #{self.move_count}\n")
-            f.write(f"Action: {action}\n")
-            f.write("=" * 80 + "\n\n")
-            
-            # Format cleaned screen with visible borders for clarity
-            lines = clean_screen.split('\n')
-            f.write("┌" + "─" * 78 + "┐\n")
-            for line in lines:
-                # Pad or truncate to 78 chars
-                line = line.ljust(78)[:78]
-                f.write("│ " + line + " │\n")
-            f.write("└" + "─" * 78 + "┘\n")
-        
-        # Save visual screen (accumulated state from buffer)
-        with open(visual_path, 'w', encoding='utf-8') as f:
-            f.write(f"=== Screen #{self.screen_counter} (Full Visual State) ===\n")
-            f.write(f"Timestamp: {timestamp}\n")
-            f.write(f"Move: #{self.move_count}\n")
-            f.write(f"Action: {action}\n")
-            f.write("=" * 80 + "\n\n")
-            
-            # Format visual screen with visible borders
-            lines = visual_screen.split('\n')
-            f.write("┌" + "─" * 118 + "┐\n")
-            for line in lines:
-                # Pad or truncate to 118 chars to show full game screen
-                line = line.ljust(118)[:118]
-                f.write("│" + line + "│\n")
-            f.write("└" + "─" * 118 + "┘\n")
-        
-        # Update index file
         try:
-            with open(self.screen_index_file, 'a') as f:
-                f.write(f"[{self.screen_counter:04d}] Move #{self.move_count} at {timestamp}\n")
-                f.write(f"        Action: {action}\n")
-                f.write(f"        Raw: {raw_file} ({len(screen)} bytes)\n")
-                f.write(f"        Clean: {clean_file} ({len(clean_screen)} chars)\n")
-                f.write(f"        Visual: {visual_file}\n")
-                f.write("\n")
-        except Exception as e:
-            logger.debug(f"Failed to update screen index: {e}")
+            self.screen_counter += 1
+            timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            
+            # Create numbered filenames
+            screen_num = f"{self.screen_counter:04d}"
+            raw_file = f"{screen_num}_raw.txt"
+            clean_file = f"{screen_num}_clean.txt"
+            visual_file = f"{screen_num}_visual.txt"
+            raw_path = os.path.join(self.debug_screens_dir, raw_file)
+            clean_path = os.path.join(self.debug_screens_dir, clean_file)
+            visual_path = os.path.join(self.debug_screens_dir, visual_file)
+            
+            # Get the full visual screen from buffer
+            visual_screen = self._get_screen_capture()
+            
+            # Save raw screen with ANSI codes
+            with open(raw_path, 'w', encoding='utf-8') as f:
+                f.write(f"=== Screen #{self.screen_counter} ===\n")
+                f.write(f"Timestamp: {timestamp}\n")
+                f.write(f"Move: #{self.move_count}\n")
+                f.write(f"Action: {action}\n")
+                f.write("=" * 80 + "\n\n")
+                f.write(screen)
+            
+            # Save cleaned screen (no ANSI codes)
+            clean_screen = self._clean_ansi(screen)
+            with open(clean_path, 'w', encoding='utf-8') as f:
+                f.write(f"=== Screen #{self.screen_counter} (Cleaned Delta) ===\n")
+                f.write(f"Timestamp: {timestamp}\n")
+                f.write(f"Move: #{self.move_count}\n")
+                f.write(f"Action: {action}\n")
+                f.write("=" * 80 + "\n\n")
+                
+                # Format cleaned screen with visible borders for clarity
+                lines = clean_screen.split('\n')
+                f.write("┌" + "─" * 78 + "┐\n")
+                for line in lines:
+                    # Pad or truncate to 78 chars
+                    line = line.ljust(78)[:78]
+                    f.write("│ " + line + " │\n")
+                f.write("└" + "─" * 78 + "┘\n")
+            
+            # Save visual screen (accumulated state from buffer)
+            with open(visual_path, 'w', encoding='utf-8') as f:
+                f.write(f"=== Screen #{self.screen_counter} (Full Visual State) ===\n")
+                f.write(f"Timestamp: {timestamp}\n")
+                f.write(f"Move: #{self.move_count}\n")
+                f.write(f"Action: {action}\n")
+                f.write("=" * 80 + "\n\n")
+                
+                # Format visual screen with visible borders
+                lines = visual_screen.split('\n')
+                f.write("┌" + "─" * 118 + "┐\n")
+                for line in lines:
+                    # Pad or truncate to 118 chars to show full game screen
+                    line = line.ljust(118)[:118]
+                    f.write("│" + line + "│\n")
+                f.write("└" + "─" * 118 + "┘\n")
+            
+            # Update index file
+            try:
+                with open(self.screen_index_file, 'a') as f:
+                    f.write(f"[{self.screen_counter:04d}] Move #{self.move_count} at {timestamp}\n")
+                    f.write(f"        Action: {action}\n")
+                    f.write(f"        Raw: {raw_file} ({len(screen)} bytes)\n")
+                    f.write(f"        Clean: {clean_file} ({len(clean_screen)} chars)\n")
+                    f.write(f"        Visual: {visual_file}\n")
+                    f.write("\n")
+            except Exception as e:
+                logger.debug(f"Failed to update screen index: {e}")
+            
+            return visual_file
         
-        return visual_file
+        except Exception as e:
+            logger.error(f"Failed to save debug screen #{self.screen_counter}: {e}")
+            logger.error(f"  Debug dir: {self.debug_screens_dir}")
+            logger.error(f"  Action: {action}")
+            import traceback
+            logger.error(f"  Traceback: {traceback.format_exc()}")
+            return ""
 
     def _log_screen_and_action(self, screen: str, action: str) -> None:
         """
@@ -777,8 +793,8 @@ class DCSSBot:
                         self.move_count += 1
                         
                         # Wait for server to process the command (local needs more time)
-                        logger.debug(f"Waiting 3 seconds for server to process '{action}'...")
-                        time.sleep(3.0)
+                        logger.debug(f"Waiting 1 second for server to process '{action}'...")
+                        time.sleep(1.0)
                         
                         # Read the response - wait for stable output
                         # Local subprocess needs more time than SSH
@@ -1080,26 +1096,32 @@ class DCSSBot:
         state = self.state_tracker.update(output)
         logger.debug(f"State: {state}")
         
+        # CHECK FOR ATTRIBUTE INCREASE PROMPT - LEVEL UP REWARD (CHECK FIRST)
+        # When leveling up, player SOMETIMES gets to choose which stat to increase (Strength, Intelligence, Dexterity)
+        # This is optional and not guaranteed - DCSS only shows this prompt sometimes
+        # If it appears, respond immediately
+        clean_output = self._clean_ansi(output) if output else ""
+        if 'Increase (S)trength' in clean_output or 'Increase (S)trength, (I)ntelligence, or (D)exterity' in clean_output:
+            logger.info("💪 Attribute increase prompt detected - choosing Strength (S)")
+            return self._return_action('S', "Level-up: Increasing Strength")
+        
         # CHECK FOR LEVEL-UP MESSAGE - PRIORITY
-        # When character gains a level, handle the message specially
+        # When character gains a level, log the event and continue
+        # Note: Stat increase prompt is OPTIONAL - DCSS doesn't always show it
         if self.parser.has_level_up_message(output):
             new_level = self.parser.extract_level_from_message(output)
-            if new_level:
+            # Only process if this is a NEW level (avoid re-detecting same message on next turn)
+            if new_level and new_level > self.last_level_up_processed:
+                self.last_level_up_processed = new_level
                 logger.info(f"🎉 LEVEL UP! Character reached Level {new_level}")
                 # Check if there's a --more-- prompt to dismiss
                 if '--more--' in output:
                     logger.info("Level-up message has --more-- prompt, dismissing...")
                     return self._return_action(' ', "Dismissing level-up --more-- prompt")  # Press space to dismiss the message
                 else:
-                    logger.info("Level-up detected, waiting for next turn to update stats...")
-                    return self._return_action('.', "Waiting for level-up UI update")  # Wait one turn to let UI update
-        
-        # CHECK FOR ATTRIBUTE INCREASE PROMPT - LEVEL UP REWARD
-        # When leveling up, player can choose which stat to increase (Strength, Intelligence, Dexterity)
-        clean_output = self._clean_ansi(output) if output else ""
-        if 'Increase (S)trength' in clean_output or 'Increase (S)trength, (I)ntelligence, or (D)exterity' in clean_output:
-            logger.info("💪 Attribute increase prompt detected - choosing Strength (S)")
-            return self._return_action('S', "Level-up: Increasing Strength")
+                    # Don't wait - continue gameplay. Stat increase prompt will be handled if it appears
+                    logger.info("Level-up processed. Continuing gameplay (stat increase is optional)...")
+                    return self._return_action('.', "Level-up processed")
         
         # CHECK FOR --MORE-- PROMPTS - DISMISS ONLY THIS SPECIFIC PROMPT
         # The game shows "--more--" when message buffer is full and needs clearing before showing additional information.
@@ -1532,7 +1554,7 @@ class DCSSBot:
         The monsters section in a 40x120 DCSS TUI appears starting at:
         - Line 21, character 41 onwards
         - Format: "X   creature_name" where X is the symbol on the map
-        - Multiple monsters can be listed, one per line
+        - Multiple monsters can be listed, one per line OR multiple on same line with 3+ spaces between
         
         Args:
             output: Current game output
@@ -1551,32 +1573,53 @@ class DCSSBot:
         
         # Parse the monsters section which starts at line 21 (0-indexed: line 20)
         # and continues for available space
-        # Look for lines with creature symbol followed by spaces and name
+        # Handle two formats:
+        # 1. Individual creatures: "K   kobold" (symbol, 3+ spaces, name)
+        # 2. Multiple same creatures: "KK  2 kobolds" OR "gg  2 goblins" (symbols, spaces, count, name)
         for line in lines:
-            # Match pattern: single letter/symbol, 3+ spaces, then creature name (may include spaces and status info in parens)
-            # Examples: "J   endoplasm" or "K   kobold (missile)" or "S   ball python (constriction, asleep)"
-            # The creature name is everything after the spaces until:
-            # 1. A parenthesis (status info like "(missile)")
-            # 2. Trailing whitespace/box chars
-            # 3. End of meaningful content
-            match = re.search(r'([a-zA-Z])\s{3,}([\w\s]+?)(?:\s*\(|\s*(?:│|$))', line)
-            if match:
-                creature_symbol = match.group(1)
-                creature_name = match.group(2).strip()  # Strip whitespace from the captured name
+            # First try to match the "grouped" format: multiple symbols + count + name
+            # Pattern: [a-zA-Z]+ (symbols, 2+, upper or lower) + spaces + digits (count) + spaces + name (word chars only)
+            grouped_matches = re.finditer(r'([a-zA-Z]{2,})\s+(\d+)\s+(\w+)', line)
+            
+            for match in grouped_matches:
+                symbols = match.group(1)
+                count = int(match.group(2))
+                creature_name = match.group(3)
                 
-                # Filter out:
-                # 1. Box drawing characters (│, ─, etc.)
-                # 2. Empty names
-                # 3. Single letter words that are likely part of display (a, I, o, d, etc. when alone)
-                # 4. Common UI text
-                if (creature_name and  # Must have a name
-                    creature_symbol not in '│─┌┐└┘┼├┤┬┴' and
+                # Reject if symbols are common English words (message artifacts, not creatures)
+                # e.g., "Found 19 sling" has symbols="Found" (a message), not creatures
+                invalid_symbols = ['Found', 'You', 'The', 'This', 'That', 'Your', 'And', 'Are', 'But', 'Can', 'For', 'Have', 'Here', 'Just', 'Know', 'Like', 'Make', 'More', 'Now', 'Only', 'Out', 'Over', 'Some', 'Such', 'Take', 'Want', 'Way', 'What', 'When', 'Will', 'With', 'Would']
+                if symbols in invalid_symbols:
+                    continue
+                
+                # Validate the entry
+                if (creature_name and
                     creature_name not in ['place', 'noise', 'time', 'ac', 'ev', 'sh', 'xl', 'next', 'magic', 'health', 'str', 'int', 'dex', 'a', 'o', 'b'] and
-                    not any(char in creature_name for char in '#.+=~,|-') and
-                    creature_name not in seen):
-                    enemies.append(creature_name)
-                    seen.add(creature_name)
-                    logger.debug(f"Monsters section entry: {creature_symbol} -> {creature_name}")
+                    not any(char in creature_name for char in '#.+=~,|-')):
+                    
+                    # Add the creature once (we'll rely on the name to avoid duplicates)
+                    if creature_name not in seen:
+                        enemies.append(creature_name)
+                        seen.add(creature_name)
+                        logger.debug(f"Monsters section (grouped): {symbols} ({count}x) -> {creature_name}")
+            
+            # Then try the standard format: single symbol + 3+ spaces + name
+            # Only process if no grouped matches (avoid double-counting)
+            if not list(re.finditer(r'([a-zA-Z]{2,})\s+(\d+)\s+(\w+)', line)):
+                standard_matches = re.finditer(r'([a-zA-Z])\s{3,}([\w\s]+?)(?=\s{3,}[a-zA-Z]|\(|[│]|$)', line)
+                
+                for match in standard_matches:
+                    creature_symbol = match.group(1)
+                    creature_name = match.group(2).strip()
+                    
+                    if (creature_name and
+                        creature_symbol not in '│─┌┐└┘┼├┤┬┴' and
+                        creature_name not in ['place', 'noise', 'time', 'ac', 'ev', 'sh', 'xl', 'next', 'magic', 'health', 'str', 'int', 'dex', 'a', 'o', 'b'] and
+                        not any(char in creature_name for char in '#.+=~,|-') and
+                        creature_name not in seen):
+                        enemies.append(creature_name)
+                        seen.add(creature_name)
+                        logger.debug(f"Monsters section (standard): {creature_symbol} -> {creature_name}")
         
         return enemies
 

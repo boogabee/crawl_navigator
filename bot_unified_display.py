@@ -108,7 +108,8 @@ class UnifiedBotDisplay:
             sys.stdout.write('\n'.join(game_lines))
             sys.stdout.flush()
             
-            # Display activity panel directly after game output
+            # Display activity panel on a new line
+            sys.stdout.write("\n")
             self._display_activity_panel()
             
         except Exception as e:

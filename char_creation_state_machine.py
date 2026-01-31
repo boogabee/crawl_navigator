@@ -84,7 +84,7 @@ class CharacterCreationStateMachine(StateMachine):
     abilities = State("Abilities Selection")
     difficulty = State("Difficulty Selection")
     confirmation = State("Confirmation")
-    gameplay = State("Gameplay Ready")
+    gameplay = State("Gameplay Ready", final=True)
     error = State("Error")
     
     # Transitions from STARTUP

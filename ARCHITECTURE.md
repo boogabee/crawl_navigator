@@ -95,6 +95,12 @@ Bot Process
 ```
 
 **Recent Improvements**: 
+- (v1.4) Screen Logging & Enemy Detection Improvements
+  - Screen logging now has comprehensive error handling with file write validation and logging
+  - Enemy detection supports lowercase grouped creatures ("gg  2 goblins")
+  - Message artifacts filtered out ("Found X item" no longer triggers combat)
+  - Invalid symbols rejected from monster entries (Found, You, The, etc.)
+  - All 75 tests passing (+4 new validation tests)
 - (v1.4) Pyte Buffer as Primary Source - Changed decision logic to use accumulated pyte buffer state instead of raw PTY deltas
   - Raw PTY output is only ANSI code deltas, not complete screen text
   - Pyte buffer accumulates all deltas into a complete 160x40 character grid

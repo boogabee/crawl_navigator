@@ -5,7 +5,53 @@
 ### Overview
 Functional DCSS automation bot with local PTY execution, character creation automation, real-time screen parsing with pyte buffer as primary game state source, and complete character creation phase screenshot logging.
 
-### Latest Changes (January 30, 2026 - Part 20)
+### Latest Changes (January 30, 2026 - Part 22)
+
+**Bug Fix: Exclude Message Artifacts from Enemy Detection**:
+- **Issue**: Bot incorrectly attempted to attack items by treating them as enemies. When the message "Found 19 sling bullets" appeared after killing a creature, the bot parsed this as "sling" being a grouped monster entry ("Found" = symbols, "19" = count, "sling" = creature name) and tried to fight it
+- **Root Cause**: 
+  - Grouped creature detection regex `([a-zA-Z]{2,})\s+(\d+)\s+(\w+)` matches ANY line with 2+ letters, numbers, and a word
+  - Message lines like "Found 19 sling bullets" matched the pattern and were incorrectly parsed as monster entries
+  - No validation that the symbol part (e.g., "Found") was actually a valid creature symbol
+  - Result: Bot sent space/wait commands thinking it was in combat with "sling"
+- **Code Changes**:
+  - `bot.py` lines 1575-1598: Added validation to reject invalid symbol names that are clearly English words (Found, You, The, This, That, Your, And, etc.)
+  - Specifically check for common message artifacts before treating a match as a legitimate monster entry
+  - Only symbols that look like creature codes (capital or lowercase letters, but not common English words) are accepted
+- **Impact**: 
+  - Bot no longer attempts to fight items or confuse messages with enemies
+  - Prevents accidental combat triggers from status messages
+  - Maintains correct enemy detection for all legitimate creature patterns
+- **Testing**: ✅ All 75 tests passing (+2 new tests) - verified:
+  - Message artifact "Found 19 sling bullets" → correctly rejected (sling not detected as enemy)
+  - Item pickup messages like "Found 8 gold pieces" → correctly rejected
+  - Real grouped monsters "gg  2 goblins" → still correctly detected
+  - Multiple message types don't trigger false enemy detection
+- **Result**: Bot can now distinguish between legitimate monster entries and message artifacts, eliminating false combat engagements
+
+### Previous Changes (January 30, 2026 - Part 21)
+
+**Bug Fix: Support Lowercase Grouped Creature Symbols in Enemy Detection**:
+- **Issue**: Bot got stuck in infinite auto-explore loop when encountering creatures represented with lowercase symbols in grouped format, e.g., "gg  2 goblins". The enemy detection regex pattern only matched uppercase letters `[A-Z]{2,}`, causing lowercase creatures like goblins, rats, newts to not be detected when grouped
+- **Root Cause**: 
+  - Grouped creature pattern: `([A-Z]{2,})\s+(\d+)\s+(\w+)` expected only uppercase symbols
+  - DCSS uses lowercase symbols for some creatures: 'g' for goblin, 'r' for rat, 'n' for newt, etc.
+  - When multiple goblins appeared, TUI showed "gg  2 goblins" but our regex didn't match (needed uppercase "GG")
+  - Result: `_detect_enemy_in_range()` returned no enemies, bot sent 'o' (auto-explore), loop repeated
+- **Code Changes**:
+  - `bot.py` line 1579: Changed pattern from `([A-Z]{2,})` to `([a-zA-Z]{2,})` to match both uppercase and lowercase symbols
+  - Verification: Both "KK  2 kobolds" (uppercase) and "gg  2 goblins" (lowercase) now detected correctly
+- **Impact**: 
+  - Bot now correctly detects grouped creatures regardless of symbol case
+  - Stops infinite explore loops when encountering goblins, rats, newts, and other lowercase-symbol creatures
+  - Maintains backward compatibility with uppercase creature groups
+- **Testing**: ✅ All 71 tests passing - verified:
+  - Lowercase grouped format: "gg  2 goblins" → correctly detects as "goblins"
+  - Uppercase grouped format: "KK  2 kobolds" → still works (no regression)
+  - Mixed single enemies: "K   kobold" + "g   goblin" → detects both
+- **Result**: Bot can now handle all creature symbol cases in grouped format, ending the exploration loop issue
+
+### Previous Changes (January 30, 2026 - Part 20)
 
 **Cleanup: Remove Bot Status Bar Separator from Display**:
 - **Issue**: Bot was displaying a separator line with redundant status information (Health, Level, Depth, Move count) between the game screen and activity panel. This information is already available in the DCSS TUI or bot activity log, making the separator redundant and potentially confusing when parsing game state

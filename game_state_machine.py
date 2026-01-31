@@ -30,7 +30,7 @@ class GameStateMachine(StateMachine):
     gameplay = State("Gameplay")
     in_menu = State("Menu")
     in_combat = State("Combat")
-    quit_state = State("Quit")
+    quit_state = State("Quit", final=True)
     error_state = State("Error")
     
     # Transitions

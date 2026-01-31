@@ -11,7 +11,18 @@ This project automates gameplay in Dungeon Crawl Stone Soup (DCSS) through a loc
   - `_decide_action()` receives text from `screen_buffer.get_screen_text()` (complete state)
   - Enemy detection now works reliably - sees full TUI monsters section
   - This is the authoritative game state representation
-  - All 71 tests passing (59 original + 12 game-based)
+  - All 75 tests passing (59 original + 16 game-based)
+
+**Recent Updates (v1.4)**:
+- ✅ Screen Logging Error Handling - Added comprehensive try-catch with logging around all file write operations
+  - Fixed silent failures when saving screen captures (raw, clean, visual files)
+  - Added detailed error logging showing file paths and tracebacks
+  - All screen files now properly created and indexed
+- ✅ Enemy Detection Improvements - Fixed grouped creature and message artifact parsing
+  - Lowercase grouped creatures now detected: "gg  2 goblins", "nn  5 newts", etc.
+  - Message artifacts no longer trigger combat: "Found 19 sling", "You kill the...", etc.
+  - Added validation to reject common English words from creature symbol lists
+  - All 75 tests passing (+4 new: grouped creatures, item filtering tests)
   
 **Recent Updates (v1.3)**:
 - ✅ Refactored to TUI-First Architecture - all decision logic now uses TUI display as source of truth
