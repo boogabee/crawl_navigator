@@ -121,7 +121,8 @@ class DCSSBot:
         self.final_location = ""
         
         # Track goto command state for descending levels
-        self.waiting_for_goto_prompt = False
+        # States: None -> 'awaiting_location_type' -> 'awaiting_level_number' -> None
+        self.goto_state = None  # None, 'awaiting_location_type', or 'awaiting_level_number'
         self.goto_target_level = 0
         
         # Track unchanged screens to detect errors
@@ -1154,24 +1155,32 @@ class DCSSBot:
         
         # CHECK FOR "DONE EXPLORING" - DESCEND TO NEXT LEVEL USING GOTO
         # When auto-explore completes, use 'G' command to goto next dungeon level
+        # Three-step process: 1) Send 'G' -> 2) Send 'D' for Dungeon -> 3) Send level number
         clean_output = self._clean_ansi(output) if output else ""
-        if 'Done exploring' in clean_output and not self.waiting_for_goto_prompt:
+        if 'Done exploring' in clean_output and self.goto_state is None:
             logger.info("📍 Done exploring current level! Preparing to descend to next level...")
             self._log_event('exploration', 'Level fully explored - descending')
             # Set up for goto command
             current_level = self.parser.state.dungeon_level
             self.goto_target_level = current_level + 1
-            self.waiting_for_goto_prompt = True
+            self.goto_state = 'awaiting_location_type'
             logger.info(f"Sending 'G' (goto) command to descend from level {current_level} to {self.goto_target_level}")
             return self._return_action('G', f"Descend to level {self.goto_target_level} (Done exploring)")
         
-        # CHECK FOR GOTO PROMPT - SEND TARGET LEVEL
-        # If we just sent 'G', we should get a prompt asking for the level
-        if self.waiting_for_goto_prompt:
-            logger.info(f"Handling goto prompt, sending target level: {self.goto_target_level}")
-            self.waiting_for_goto_prompt = False
-            # Send the target level as a string followed by Enter
-            return self._return_action(str(self.goto_target_level), f"Descending to dungeon level {self.goto_target_level}")
+        # STEP 2: After 'G', the game prompts for location type (like "(D)ungeon/(B)ranch")
+        # Send 'D' to select Dungeon
+        if self.goto_state == 'awaiting_location_type':
+            logger.info("Goto command sent, game asking for location type. Responding with 'D' for Dungeon...")
+            self.goto_state = 'awaiting_level_number'
+            return self._return_action('D', "Selecting Dungeon from goto location menu")
+        
+        # STEP 3: After 'D', the game prompts for the level number
+        # Send the target level number
+        if self.goto_state == 'awaiting_level_number':
+            logger.info(f"Goto location selected, game asking for level number. Responding with {self.goto_target_level}...")
+            self.goto_state = None  # Reset goto state
+            target_level_str = str(self.goto_target_level)
+            return self._return_action(target_level_str, f"Descending to dungeon level {self.goto_target_level}")
         
         # If in menu, let the menu handler deal with it
         if self.state_tracker.in_menu_state():
