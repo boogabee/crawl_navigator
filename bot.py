@@ -1104,7 +1104,7 @@ class DCSSBot:
         clean_output = self._clean_ansi(output) if output else ""
         if 'Increase (S)trength' in clean_output or 'Increase (S)trength, (I)ntelligence, or (D)exterity' in clean_output:
             # Extract current level to check if this is a NEW attribute increase prompt
-            current_level = self.parser.extract_level(output)
+            current_level = self.parser.state.experience_level
             # Only respond if this is a NEW level (we haven't processed attribute increase for this level yet)
             if current_level and current_level > self.last_attribute_increase_level:
                 self.last_attribute_increase_level = current_level
