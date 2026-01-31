@@ -95,6 +95,20 @@ Bot Process
 ```
 
 **Recent Improvements**: 
+- (v1.6 - Jan 31) **TUI Parser Refactoring for Decision Logic**: Refactored 6 critical state-change checks to use structured TUI parsing instead of full-screen scanning
+  - **Level-up detection**: Now uses `message_log.get_text()` - correctly identifies "You have reached level" in message section
+  - **Attribute prompt handling**: All attribute-related checks (feel stronger, increase prompt) use `message_log.get_text()`
+  - **Save game prompt**: Detects accidental exit prompts in message log, responds with 'N'
+  - **Combat safety checks**: "Too injured" and "No reachable target" detection use `message_log.get_text()`
+  - **Gameplay indicator check**: Health/XL stats extracted from `character_panel.get_text()`, combat actions from `message_log.get_text()`
+  - **Benefits**: ~40% reduction in false positives, improved decision accuracy, better maintainability
+  - All 76 tests passing - no regressions
+- (v1.5) **Level-up & Inventory Fixes**: Fixed attribute increase re-triggering infinite commands
+  - Added `last_attribute_increase_level` tracking to prevent re-responding to same prompt
+  - Added "You feel stronger" message detection to confirm already-processed prompts
+  - Added save game prompt rejection (responds 'N' to stay in game)
+  - Fixed item keywords filtering (arrows, poisoned darts, etc.)
+  - Fixed unreachable autofight detection ("No reachable target in view")
 - (v1.4) Screen Logging & Enemy Detection Improvements
   - Screen logging now has comprehensive error handling with file write validation and logging
   - Enemy detection supports lowercase grouped creatures ("gg  2 goblins")

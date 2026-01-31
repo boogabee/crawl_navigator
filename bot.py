@@ -257,14 +257,22 @@ class DCSSBot:
                     return
         
         # Level-up detection (already logged separately, but add to events too)
-        if 'You have reached level' in clean_output:
-            level_match = re.search(r'You have reached level (\d+)', clean_output)
-            if level_match:
-                level = int(level_match.group(1))
-                if level not in self.level_ups_gained:
-                    self.level_ups_gained.append(level)
-                    # Note: This will be logged by the main level-up detection too
-            return
+        # Use TUI parser to extract message log section for reliability
+        screen_text = self.screen_buffer.get_screen_text() if self.last_screen else ""
+        if screen_text:
+            tui_parser = DCSSLayoutParser()
+            tui_areas = tui_parser.parse_layout(screen_text)
+            message_log_area = tui_areas.get('message_log', None)
+            if message_log_area:
+                message_content = message_log_area.get_text()
+                if 'You have reached level' in message_content:
+                    level_match = re.search(r'You have reached level (\d+)', message_content)
+                    if level_match:
+                        level = int(level_match.group(1))
+                        if level not in self.level_ups_gained:
+                            self.level_ups_gained.append(level)
+                            # Note: This will be logged by the main level-up detection too
+                    return
         
         # Door/Feature discovery
         feature_patterns = [
@@ -1108,25 +1116,40 @@ class DCSSBot:
         clean_output = self._clean_ansi(output) if output else ""
         
         # If we see "You feel stronger" message, the attribute increase already happened - don't send another 'S'
-        if 'you feel stronger' in clean_output.lower():
-            logger.debug("💪 Attribute increase already processed (detected 'You feel stronger' message)")
-            # Continue to other checks - don't respond with 'S' again
-        elif 'Increase (S)trength' in clean_output or 'Increase (S)trength, (I)ntelligence, or (D)exterity' in clean_output:
-            # Extract current level to check if this is a NEW attribute increase prompt
-            current_level = self.parser.state.experience_level
-            # Only respond if this is a NEW level (we haven't processed attribute increase for this level yet)
-            if current_level and current_level > self.last_attribute_increase_level:
-                self.last_attribute_increase_level = current_level
-                logger.info("💪 Attribute increase prompt detected - choosing Strength (S)")
-                return self._return_action('S', "Level-up: Increasing Strength")
-            # Otherwise, skip this prompt (already handled for this level)
+        # Use TUI parser to check message log section
+        screen_text = self.screen_buffer.get_screen_text() if self.last_screen else ""
+        if screen_text:
+            tui_parser = DCSSLayoutParser()
+            tui_areas = tui_parser.parse_layout(screen_text)
+            message_log_area = tui_areas.get('message_log', None)
+            if message_log_area:
+                message_content = message_log_area.get_text()
+                if 'you feel stronger' in message_content.lower():
+                    logger.debug("💪 Attribute increase already processed (detected 'You feel stronger' message)")
+                    # Continue to other checks - don't respond with 'S' again
+                elif 'Increase (S)trength' in message_content or 'Increase (S)trength, (I)ntelligence, or (D)exterity' in message_content:
+                    # Extract current level to check if this is a NEW attribute increase prompt
+                    current_level = self.parser.state.experience_level
+                    # Only respond if this is a NEW level (we haven't processed attribute increase for this level yet)
+                    if current_level and current_level > self.last_attribute_increase_level:
+                        self.last_attribute_increase_level = current_level
+                        logger.info("💪 Attribute increase prompt detected - choosing Strength (S)")
+                        return self._return_action('S', "Level-up: Increasing Strength")
+                    # Otherwise, skip this prompt (already handled for this level)
         
         # CHECK FOR SAVE GAME PROMPT - REJECT TO CONTINUE PLAYING
         # If somehow we triggered "Save game and return to main menu?" (e.g., sent extra 'S'), 
         # respond with 'N' to stay in game and continue playing
-        if 'save game and return to main menu' in clean_output.lower() and '[y]es or [n]o' in clean_output.lower():
-            logger.warning("⚠️ Save game prompt detected (likely from extra input) - responding with 'N' to stay in game")
-            return self._return_action('n', "Rejecting save prompt - continuing gameplay")
+        # Use TUI parser to check message log section
+        if screen_text:
+            tui_parser = DCSSLayoutParser()
+            tui_areas = tui_parser.parse_layout(screen_text)
+            message_log_area = tui_areas.get('message_log', None)
+            if message_log_area:
+                message_content = message_log_area.get_text()
+                if 'save game and return to main menu' in message_content.lower() and '[y]es or [n]o' in message_content.lower():
+                    logger.warning("⚠️ Save game prompt detected (likely from extra input) - responding with 'N' to stay in game")
+                    return self._return_action('n', "Rejecting save prompt - continuing gameplay")
         
         # CHECK FOR LEVEL-UP MESSAGE - PRIORITY
         # When character gains a level, log the event and continue
@@ -1205,18 +1228,33 @@ class DCSSBot:
         
         # CRITICAL: Check if screen shows gameplay indicators (Health, Time, XL, etc)
         # Even if state_tracker hasn't transitioned to GAMEPLAY yet
-        # clean_output already extracted above for "Done exploring" check
+        # Use TUI parser to extract stats from character panel (more reliable)
+        has_health = False
+        has_xl = False
+        has_combat_action = False
         
-        has_health = ('Health:' in output if output else False) or ('Health:' in clean_output)
-        has_xl = ('XL:' in output if output else False) or ('XL:' in clean_output)
-        
-        # Also check for combat/action messages that indicate active gameplay
-        has_combat_action = any(indicator in clean_output for indicator in [
-            'You encounter', 'You see',  # Enemy encountered
-            'block', 'miss', 'hits', 'damage',  # Combat happening
-            'opens the door', 'You open',  # Movement
-            'rat', 'bat', 'spider', 'goblin',  # Specific creatures
-        ]) if clean_output else False
+        screen_text_check = self.screen_buffer.get_screen_text() if self.last_screen else ""
+        if screen_text_check:
+            tui_parser_check = DCSSLayoutParser()
+            tui_areas_check = tui_parser_check.parse_layout(screen_text_check)
+            
+            # Check character panel for health and XL stats
+            char_panel_area = tui_areas_check.get('character_panel', None)
+            if char_panel_area:
+                char_panel_text = char_panel_area.get_text()
+                has_health = 'Health:' in char_panel_text
+                has_xl = 'XL:' in char_panel_text
+            
+            # Also check message log for combat/action messages that indicate active gameplay
+            message_log_area = tui_areas_check.get('message_log', None)
+            if message_log_area:
+                message_content = message_log_area.get_text()
+                has_combat_action = any(indicator in message_content for indicator in [
+                    'You encounter', 'You see',  # Enemy encountered
+                    'block', 'miss', 'hits', 'damage',  # Combat happening
+                    'opens the door', 'You open',  # Movement
+                    'rat', 'bat', 'spider', 'goblin',  # Specific creatures
+                ])
         
         has_gameplay_indicators = has_health or has_xl or has_combat_action
         
@@ -1274,22 +1312,36 @@ class DCSSBot:
                 return self._return_action(direction, f"Combat: Moving toward {enemy_name} (low health: {health_percentage:.1f}%)")
             
             # Check if we're too injured to fight recklessly (added safety check)
-            clean_output = self._clean_ansi(output) if output else ""
-            if 'too injured to fight recklessly' in clean_output.lower():
-                logger.info("💔 Too injured to use autofight! Moving toward enemy instead...")
-                direction = self._find_direction_to_enemy(output)
-                return self._return_action(direction, "Combat: Too injured for autofight")
+            # Use TUI parser to check message log section
+            screen_text_injured = self.screen_buffer.get_screen_text() if self.last_screen else ""
+            if screen_text_injured:
+                tui_parser_injured = DCSSLayoutParser()
+                tui_areas_injured = tui_parser_injured.parse_layout(screen_text_injured)
+                message_log_area_injured = tui_areas_injured.get('message_log', None)
+                if message_log_area_injured:
+                    message_content_injured = message_log_area_injured.get_text()
+                    if 'too injured to fight recklessly' in message_content_injured.lower():
+                        logger.info("💔 Too injured to use autofight! Moving toward enemy instead...")
+                        direction = self._find_direction_to_enemy(output)
+                        return self._return_action(direction, "Combat: Too injured for autofight")
             
             logger.info(f"Enemy detected: {enemy_name} at {health_percentage:.1f}% health! Using autofight (Tab)")
             self.consecutive_rest_actions = 0  # Reset rest counter on combat
             
             # Check if autofight failed on a previous turn with "No reachable target in view!"
             # This means the enemy is visible but not in melee range - use movement instead
-            clean_output = self._clean_ansi(output) if output else ""
-            if 'no reachable target in view' in clean_output.lower() and self.last_action_sent == '\t':
-                logger.info(f"⚔️ Autofight failed (no reachable target) - enemy {enemy_name} out of melee range. Using movement instead...")
-                direction = self._find_direction_to_enemy(output)
-                return self._return_action(direction, f"Combat: Moving to reach {enemy_name} (autofight unreachable)")
+            # Use TUI parser to check message log section
+            screen_text_reach = self.screen_buffer.get_screen_text() if self.last_screen else ""
+            if screen_text_reach:
+                tui_parser_reach = DCSSLayoutParser()
+                tui_areas_reach = tui_parser_reach.parse_layout(screen_text_reach)
+                message_log_area_reach = tui_areas_reach.get('message_log', None)
+                if message_log_area_reach:
+                    message_content_reach = message_log_area_reach.get_text()
+                    if 'no reachable target in view' in message_content_reach.lower() and self.last_action_sent == '\t':
+                        logger.info(f"⚔️ Autofight failed (no reachable target) - enemy {enemy_name} out of melee range. Using movement instead...")
+                        direction = self._find_direction_to_enemy(output)
+                        return self._return_action(direction, f"Combat: Moving to reach {enemy_name} (autofight unreachable)")
             
             return self._return_action('\t', f"Autofight - {enemy_name} in range")  # Tab = autofight
         
