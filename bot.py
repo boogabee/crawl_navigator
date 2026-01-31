@@ -1157,15 +1157,20 @@ class DCSSBot:
         # When auto-explore completes, use 'G' command to goto next dungeon level
         # Three-step process: 1) Send 'G' -> 2) Send 'D' for Dungeon -> 3) Send level number
         clean_output = self._clean_ansi(output) if output else ""
-        if 'Done exploring' in clean_output and self.goto_state is None:
-            logger.info("📍 Done exploring current level! Preparing to descend to next level...")
-            self._log_event('exploration', 'Level fully explored - descending')
+        if ('Done exploring' in clean_output or 'Partly explored' in clean_output) and self.goto_state is None:
+            if 'Done exploring' in clean_output:
+                logger.info("📍 Done exploring current level! Preparing to descend to next level...")
+                reason = "Done exploring"
+            else:
+                logger.info("📍 Auto-explore stuck (unreachable items/areas detected). Descending to next level...")
+                reason = "Partly explored (moving on)"
+            self._log_event('exploration', 'Level exploration complete or stuck - descending')
             # Set up for goto command
             current_level = self.parser.state.dungeon_level
             self.goto_target_level = current_level + 1
             self.goto_state = 'awaiting_location_type'
             logger.info(f"Sending 'G' (goto) command to descend from level {current_level} to {self.goto_target_level}")
-            return self._return_action('G', f"Descend to level {self.goto_target_level} (Done exploring)")
+            return self._return_action('G', f"Descend to level {self.goto_target_level} ({reason})")
         
         # STEP 2: After 'G', the game prompts for location type (like "(D)ungeon/(B)ranch")
         # Send 'D' to select Dungeon
