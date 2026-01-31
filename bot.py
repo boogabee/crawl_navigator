@@ -15,6 +15,7 @@ from game_state import GameStateParser
 from game_state_machine import GameStateMachine
 from char_creation_state_machine import CharacterCreationStateMachine
 from bot_unified_display import UnifiedBotDisplay
+from tui_parser import DCSSLayoutParser
 from credentials import CRAWL_COMMAND
 
 
@@ -1156,21 +1157,31 @@ class DCSSBot:
         # CHECK FOR "DONE EXPLORING" - DESCEND TO NEXT LEVEL USING GOTO
         # When auto-explore completes, use 'G' command to goto next dungeon level
         # Three-step process: 1) Send 'G' -> 2) Send 'D' for Dungeon -> 3) Send level number
-        clean_output = self._clean_ansi(output) if output else ""
-        if ('Done exploring' in clean_output or 'Partly explored' in clean_output) and self.goto_state is None:
-            if 'Done exploring' in clean_output:
-                logger.info("📍 Done exploring current level! Preparing to descend to next level...")
-                reason = "Done exploring"
-            else:
-                logger.info("📍 Auto-explore stuck (unreachable items/areas detected). Descending to next level...")
-                reason = "Partly explored (moving on)"
-            self._log_event('exploration', 'Level exploration complete or stuck - descending')
-            # Set up for goto command
-            current_level = self.parser.state.dungeon_level
-            self.goto_target_level = current_level + 1
-            self.goto_state = 'awaiting_location_type'
-            logger.info(f"Sending 'G' (goto) command to descend from level {current_level} to {self.goto_target_level}")
-            return self._return_action('G', f"Descend to level {self.goto_target_level} ({reason})")
+        # NOTE: These messages appear in the message log section of the TUI, so we check there specifically
+        if self.goto_state is None:
+            # Use TUI parser to extract the message log section (more reliable than scanning entire output)
+            screen_text = self.screen_buffer.get_screen_text() if self.last_screen else ""
+            if screen_text:
+                tui_parser = DCSSLayoutParser()
+                tui_areas = tui_parser.parse_layout(screen_text)
+                message_log_area = tui_areas.get('message_log', None)
+                message_content = message_log_area.get_text() if message_log_area else ""
+                
+                # Check message log for exploration completion indicators
+                if 'Done exploring' in message_content or 'Partly explored' in message_content:
+                    if 'Done exploring' in message_content:
+                        logger.info("📍 Done exploring current level! Preparing to descend to next level...")
+                        reason = "Done exploring"
+                    else:
+                        logger.info("📍 Auto-explore stuck (unreachable items/areas detected). Descending to next level...")
+                        reason = "Partly explored (moving on)"
+                    self._log_event('exploration', 'Level exploration complete or stuck - descending')
+                    # Set up for goto command
+                    current_level = self.parser.state.dungeon_level
+                    self.goto_target_level = current_level + 1
+                    self.goto_state = 'awaiting_location_type'
+                    logger.info(f"Sending 'G' (goto) command to descend from level {current_level} to {self.goto_target_level}")
+                    return self._return_action('G', f"Descend to level {self.goto_target_level} ({reason})")
         
         # STEP 2: After 'G', the game prompts for location type (like "(D)ungeon/(B)ranch")
         # Send 'D' to select Dungeon
