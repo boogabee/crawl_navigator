@@ -794,8 +794,8 @@ class DCSSBot:
                         self.move_count += 1
                         
                         # Wait for server to process the command (local needs more time)
-                        logger.debug(f"Waiting 1 second for server to process '{action}'...")
-                        time.sleep(1.0)
+                        logger.debug(f"Waiting 0.25 seconds for server to process '{action}'...")
+                        time.sleep(0.25)
                         
                         # Read the response - wait for stable output
                         # Local subprocess needs more time than SSH
@@ -986,7 +986,7 @@ class DCSSBot:
                 self.final_location = f"{self.parser.state.dungeon_branch}:{self.parser.state.dungeon_level}"
                 logger.info(f"Captured final state - HP: {self.final_health}/{self.final_max_health}, Mana: {self.final_mana}/{self.final_max_mana}, Gold: {self.final_gold}")
                 
-                time.sleep(1.0)  # Let user see the stats
+                time.sleep(0.25)  # Let user see the stats
             else:
                 logger.warning("No response to 'E' command")
             
@@ -1011,12 +1011,12 @@ class DCSSBot:
                         self.ssh_client.send_command('quit')
                         time.sleep(0.5)
                         self.ssh_client.send_command('\r')  # Send enter/return
-                        time.sleep(1.0)
+                        time.sleep(0.25)
                     else:
                         # Generic confirmation prompt
                         logger.info("Confirming character abandon with 'y'...")
                         self.ssh_client.send_command('y')
-                        time.sleep(1.0)
+                        time.sleep(0.25)
                     
                     # Capture end-of-game screens
                     logger.info("Capturing end-of-game state screens...")
@@ -1045,13 +1045,13 @@ class DCSSBot:
                     self.ssh_client.send_command('quit')
                     time.sleep(0.5)
                     self.ssh_client.send_command('\r')  # Send enter
-                    time.sleep(1.0)
+                    time.sleep(0.25)
             else:
                 logger.warning("No response to Ctrl-Q, attempting to send 'quit' anyway")
                 self.ssh_client.send_command('quit')
                 time.sleep(0.5)
                 self.ssh_client.send_command('\r')
-                time.sleep(1.0)
+                time.sleep(0.25)
                 
         except Exception as e:
             logger.error(f"Error during graceful quit: {e}")
@@ -1466,7 +1466,7 @@ class DCSSBot:
                             continue
                         elif current_state == 'error':
                             logger.warning(f"State machine entered error state, retrying...")
-                            time.sleep(1.0)
+                            time.sleep(0.25)
                             continue
             
             # Phase 2: If we reach here, we've exhausted attempts. Log final status
