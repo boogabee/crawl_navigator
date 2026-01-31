@@ -1101,8 +1101,15 @@ class DCSSBot:
         # When leveling up, player SOMETIMES gets to choose which stat to increase (Strength, Intelligence, Dexterity)
         # This is optional and not guaranteed - DCSS only shows this prompt sometimes
         # If it appears, respond ONCE per level (tracked by last_attribute_increase_level)
+        # IMPORTANT: The prompt text persists in message history, so we also check for "You feel stronger" 
+        # to confirm the prompt was already handled (indicates player already chose an attribute)
         clean_output = self._clean_ansi(output) if output else ""
-        if 'Increase (S)trength' in clean_output or 'Increase (S)trength, (I)ntelligence, or (D)exterity' in clean_output:
+        
+        # If we see "You feel stronger" message, the attribute increase already happened - don't send another 'S'
+        if 'you feel stronger' in clean_output.lower():
+            logger.debug("💪 Attribute increase already processed (detected 'You feel stronger' message)")
+            # Continue to other checks - don't respond with 'S' again
+        elif 'Increase (S)trength' in clean_output or 'Increase (S)trength, (I)ntelligence, or (D)exterity' in clean_output:
             # Extract current level to check if this is a NEW attribute increase prompt
             current_level = self.parser.state.experience_level
             # Only respond if this is a NEW level (we haven't processed attribute increase for this level yet)
@@ -1111,6 +1118,13 @@ class DCSSBot:
                 logger.info("💪 Attribute increase prompt detected - choosing Strength (S)")
                 return self._return_action('S', "Level-up: Increasing Strength")
             # Otherwise, skip this prompt (already handled for this level)
+        
+        # CHECK FOR SAVE GAME PROMPT - REJECT TO CONTINUE PLAYING
+        # If somehow we triggered "Save game and return to main menu?" (e.g., sent extra 'S'), 
+        # respond with 'N' to stay in game and continue playing
+        if 'save game and return to main menu' in clean_output.lower() and '[y]es or [n]o' in clean_output.lower():
+            logger.warning("⚠️ Save game prompt detected (likely from extra input) - responding with 'N' to stay in game")
+            return self._return_action('n', "Rejecting save prompt - continuing gameplay")
         
         # CHECK FOR LEVEL-UP MESSAGE - PRIORITY
         # When character gains a level, log the event and continue
