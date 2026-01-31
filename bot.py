@@ -1011,12 +1011,12 @@ class DCSSBot:
                         self.ssh_client.send_command('quit')
                         time.sleep(0.5)
                         self.ssh_client.send_command('\r')  # Send enter/return
-                        time.sleep(0.25)
+                        time.sleep(1.0)
                     else:
                         # Generic confirmation prompt
                         logger.info("Confirming character abandon with 'y'...")
                         self.ssh_client.send_command('y')
-                        time.sleep(0.25)
+                        time.sleep(1.0)
                     
                     # Capture end-of-game screens
                     logger.info("Capturing end-of-game state screens...")
@@ -1045,13 +1045,13 @@ class DCSSBot:
                     self.ssh_client.send_command('quit')
                     time.sleep(0.5)
                     self.ssh_client.send_command('\r')  # Send enter
-                    time.sleep(0.25)
+                    time.sleep(1.0)
             else:
                 logger.warning("No response to Ctrl-Q, attempting to send 'quit' anyway")
                 self.ssh_client.send_command('quit')
                 time.sleep(0.5)
                 self.ssh_client.send_command('\r')
-                time.sleep(0.25)
+                time.sleep(1.0)
                 
         except Exception as e:
             logger.error(f"Error during graceful quit: {e}")
@@ -1466,7 +1466,7 @@ class DCSSBot:
                             continue
                         elif current_state == 'error':
                             logger.warning(f"State machine entered error state, retrying...")
-                            time.sleep(0.25)
+                            time.sleep(1.0)
                             continue
             
             # Phase 2: If we reach here, we've exhausted attempts. Log final status
