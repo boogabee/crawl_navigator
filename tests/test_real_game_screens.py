@@ -184,3 +184,24 @@ class TestScreenParsing:
         for message_line, item_name in test_cases:
             enemies = bot._extract_all_enemies_from_tui(message_line)
             assert item_name not in enemies, f"Item '{item_name}' incorrectly detected as enemy in: {message_line}"
+
+    def test_inventory_gold_message_not_detected_as_enemy(self):
+        """Test that 'you have X gold' inventory messages are not detected as enemies.
+        
+        Regression test for issue where bot run detected "have (9x) -> gold" as enemy
+        and attempted autofight. The word "have" must be in invalid_symbols to prevent
+        this pattern from matching as a grouped creature entry.
+        """
+        bot = DCSSBot()
+        
+        # Messages showing player's gold should not be confused with combat
+        test_cases = [
+            "You have 9 gold pieces.",
+            "│_You have 150 gold.",
+            "│_Currently have 42 gold pieces",
+        ]
+        
+        for message in test_cases:
+            enemies = bot._extract_all_enemies_from_tui(message)
+            assert "gold" not in enemies, f"Gold item incorrectly detected as enemy from: {message}"
+            assert len(enemies) == 0, f"Expected no enemies in inventory message, got {enemies}"

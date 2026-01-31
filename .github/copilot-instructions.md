@@ -180,7 +180,7 @@ if self.last_screen:
 ### Testing
 - Located in `tests/` with conftest.py fixtures
 - Run with `bash run_tests.sh` or `pytest tests/`
-- All 75 tests must pass (as of v1.4: 59 original + 16 real game screen validation tests)
+- All 76 tests must pass (as of v1.5: 59 original + 17 real game screen validation tests)
 - Mock fixtures in conftest: `char_creation_state_machine`, `game_state_parser`, `game_state_tracker`
 - Real game screen fixtures: `tests/fixtures/game_screens/` - 4 representative game states
 
@@ -242,6 +242,12 @@ Or individual test: `pytest tests/test_bot.py::test_character_creation_flow -v`.
 
 ## Version History & Recent Fixes
 
+- **v1.5** (Jan 30, 2026): Level-up stat increase per-level tracking + inventory message filtering:
+  - Fixed level-up stat increase re-triggering infinite 'S' commands causing game exit
+  - Added `last_attribute_increase_level` tracking variable (similar to `last_level_up_processed`)
+  - Attribute increase prompt now only responded to once per level
+  - Fixed "you have X gold" messages triggering combat by adding "have" to invalid_symbols
+  - All 76 tests passing (+1 new regression test for inventory messages)
 - **v1.4** (Jan 30, 2026): Screen logging error handling + enemy detection improvements:
   - Added comprehensive error handling to `_save_debug_screen()` and `_get_screen_capture()` with logging
   - Fixed lowercase grouped creature detection (e.g., "gg  2 goblins" now correctly detected)

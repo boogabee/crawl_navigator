@@ -4,6 +4,17 @@
 
 This project automates gameplay in Dungeon Crawl Stone Soup (DCSS) through a local PTY connection. The bot navigates menus, handles character creation, and executes turn-by-turn gameplay using state machines and screen analysis.
 
+**Recent Updates (v1.5)**:
+- ✅ Level-Up Stat Increase Per-Level Tracking - Fixed repeated 'S' commands causing game exit
+  - Added `last_attribute_increase_level` tracking variable (similar to `last_level_up_processed`)
+  - Attribute increase prompt now only responded to once per level
+  - Prevents bot from sending repeated 'S' which triggered exit prompt
+  - Eliminates accidental game exits during level-up
+- ✅ Inventory Message Filtering - "You have X gold" no longer triggers combat
+  - Added "have" to invalid_symbols list (joins Found, You, The, This, etc.)
+  - Bot no longer attempts to fight gold or confuses status messages with enemies
+  - All 76 tests passing (+1 regression test for inventory messages)
+
 **Recent Updates (v1.4)**:
 - ✅ Pyte Buffer as Primary Source - Game decisions now use accumulated screen buffer instead of raw PTY deltas
   - Raw PTY output is only ANSI code deltas - missing complete text like enemy names
@@ -12,8 +23,6 @@ This project automates gameplay in Dungeon Crawl Stone Soup (DCSS) through a loc
   - Enemy detection now works reliably - sees full TUI monsters section
   - This is the authoritative game state representation
   - All 75 tests passing (59 original + 16 game-based)
-
-**Recent Updates (v1.4)**:
 - ✅ Screen Logging Error Handling - Added comprehensive try-catch with logging around all file write operations
   - Fixed silent failures when saving screen captures (raw, clean, visual files)
   - Added detailed error logging showing file paths and tracebacks

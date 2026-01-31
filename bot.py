@@ -135,6 +135,7 @@ class DCSSBot:
         self.enemies_encountered = set()
         self.level_ups_gained = []
         self.last_level_up_processed = 0  # Track last level we processed level-up for (avoid re-detecting same message)
+        self.last_attribute_increase_level = 0  # Track level we processed attribute increase for (avoid re-prompting)
         
         # Initialize log file
         logs_dir = "logs"
@@ -1099,11 +1100,17 @@ class DCSSBot:
         # CHECK FOR ATTRIBUTE INCREASE PROMPT - LEVEL UP REWARD (CHECK FIRST)
         # When leveling up, player SOMETIMES gets to choose which stat to increase (Strength, Intelligence, Dexterity)
         # This is optional and not guaranteed - DCSS only shows this prompt sometimes
-        # If it appears, respond immediately
+        # If it appears, respond ONCE per level (tracked by last_attribute_increase_level)
         clean_output = self._clean_ansi(output) if output else ""
         if 'Increase (S)trength' in clean_output or 'Increase (S)trength, (I)ntelligence, or (D)exterity' in clean_output:
-            logger.info("💪 Attribute increase prompt detected - choosing Strength (S)")
-            return self._return_action('S', "Level-up: Increasing Strength")
+            # Extract current level to check if this is a NEW attribute increase prompt
+            current_level = self.parser.extract_level(output)
+            # Only respond if this is a NEW level (we haven't processed attribute increase for this level yet)
+            if current_level and current_level > self.last_attribute_increase_level:
+                self.last_attribute_increase_level = current_level
+                logger.info("💪 Attribute increase prompt detected - choosing Strength (S)")
+                return self._return_action('S', "Level-up: Increasing Strength")
+            # Otherwise, skip this prompt (already handled for this level)
         
         # CHECK FOR LEVEL-UP MESSAGE - PRIORITY
         # When character gains a level, log the event and continue
@@ -1588,7 +1595,7 @@ class DCSSBot:
                 
                 # Reject if symbols are common English words (message artifacts, not creatures)
                 # e.g., "Found 19 sling" has symbols="Found" (a message), not creatures
-                invalid_symbols = ['Found', 'You', 'The', 'This', 'That', 'Your', 'And', 'Are', 'But', 'Can', 'For', 'Have', 'Here', 'Just', 'Know', 'Like', 'Make', 'More', 'Now', 'Only', 'Out', 'Over', 'Some', 'Such', 'Take', 'Want', 'Way', 'What', 'When', 'Will', 'With', 'Would']
+                invalid_symbols = ['Found', 'You', 'The', 'This', 'That', 'Your', 'And', 'Are', 'But', 'Can', 'For', 'Have', 'Here', 'Just', 'Know', 'Like', 'Make', 'More', 'Now', 'Only', 'Out', 'Over', 'Some', 'Such', 'Take', 'Want', 'Way', 'What', 'When', 'Will', 'With', 'Would', 'have']
                 if symbols in invalid_symbols:
                     continue
                 

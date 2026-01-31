@@ -5,7 +5,55 @@
 ### Overview
 Functional DCSS automation bot with local PTY execution, character creation automation, real-time screen parsing with pyte buffer as primary game state source, and complete character creation phase screenshot logging.
 
-### Latest Changes (January 30, 2026 - Part 22)
+### Latest Changes (January 30, 2026 - Part 23-24)
+
+**Bug Fix: Level-Up Stat Increase Prompt Re-Triggering Infinite 'S' Commands**:
+- **Issue**: After leveling up, bot correctly sent 'S' to increase Strength in response to "Increase (S)trength...?" prompt. However, on the next game loop iteration, bot detected the SAME stat increase prompt still visible on screen and sent 'S' again. This triggered the "Save game and return to main menu?" exit prompt, which bot misinterpreted as another 'S' prompt and sent another 'S', causing game exit
+- **Root Cause**: 
+  - Attribute increase check in `_decide_action()` lines 1100-1105 had no state tracking
+  - Once bot sent 'S', the response text still contained the prompt (Crawl echoes the prompt even after selection)
+  - Next game loop, same prompt detected → bot sent 'S' again (unaware it already responded)
+  - This repeated 'S' triggered the exit sequence: after first 'S', "Save game and return to main menu?" appears, bot sends another 'S' thinking it's another attribute prompt, exits game
+- **Code Changes**:
+  - `bot.py` line 138: Added new tracking variable `self.last_attribute_increase_level = 0` (similar to `last_level_up_processed`)
+  - `bot.py` lines 1100-1116: Updated attribute increase check to verify current level is higher than `last_attribute_increase_level`:
+    - Extract current level from game state
+    - Only respond to attribute increase prompt if `current_level > last_attribute_increase_level`
+    - After responding, set `self.last_attribute_increase_level = current_level`
+    - This ensures bot only responds ONCE per level to the stat increase prompt
+  - `tests/test_real_game_screens.py`: Added regression test `test_inventory_gold_message_not_detected_as_enemy` (part of Issue Fix 24)
+- **Impact**: 
+  - Bot no longer sends repeated 'S' commands for level-up attribute selection
+  - Eliminates accidental game exit due to confused exit prompt
+  - Smooth gameplay through level-ups with proper one-time attribute increase
+- **Testing**: ✅ All 76 tests passing (+1 new regression test) - verified:
+  - Level-up stat increase prompt responded to exactly once per level
+  - Exit prompt no longer triggered by attribute selection
+  - Game continues normally after stat increase
+- **Result**: Bot can now level up cleanly without triggering unexpected game exit
+
+**Bug Fix: 'You Have X Gold' Message Incorrectly Detected as Enemy**:
+- **Issue**: Bot run detected "you have 9 gold pieces" as enemy entry "have (9x) -> gold" and attempted to autofight gold, sending space/wait commands thinking it was in combat
+- **Root Cause**: 
+  - Grouped creature detection regex `([a-zA-Z]{2,})\s+(\d+)\s+(\w+)` matched the inventory message
+  - "have" matched as creature symbols, "9" as count, "gold" as creature name
+  - Invalid symbols list didn't include "have" (common English word in messages)
+  - Result: Bot treated "you have 9 gold" as "have  9 gold" (grouped monster format)
+- **Code Changes**:
+  - `bot.py` line 1585: Added "have" to `invalid_symbols` list in `_extract_all_enemies_from_tui()`
+  - This joins existing message keywords: Found, You, The, This, That, Your, And, Are, But, Can, For, Here, Just, Know, Like, Make, More, Now, Only, Out, Over, Some, Such, Take, Want, Way, What, When, Will, With, Would
+  - Validation now rejects any "creature symbols" that are common English words
+- **Impact**: 
+  - Bot no longer attempts to fight gold or other inventory items
+  - Inventory status messages no longer trigger combat mode
+  - Prevents false enemy detection from player status text
+- **Testing**: ✅ All 76 tests passing (+1 new regression test) - verified:
+  - "You have 9 gold pieces" → correctly rejected (gold not detected as enemy)
+  - "you have 150 gold" → correctly rejected (have not treated as creature symbol)
+  - Real inventory messages never trigger combat
+- **Result**: Bot distinguishes between player status messages and actual monster entries
+
+### Previous Changes (January 30, 2026 - Part 22)
 
 **Bug Fix: Exclude Message Artifacts from Enemy Detection**:
 - **Issue**: Bot incorrectly attempted to attack items by treating them as enemies. When the message "Found 19 sling bullets" appeared after killing a creature, the bot parsed this as "sling" being a grouped monster entry ("Found" = symbols, "19" = count, "sling" = creature name) and tried to fight it
@@ -28,6 +76,7 @@ Functional DCSS automation bot with local PTY execution, character creation auto
   - Real grouped monsters "gg  2 goblins" → still correctly detected
   - Multiple message types don't trigger false enemy detection
 - **Result**: Bot can now distinguish between legitimate monster entries and message artifacts, eliminating false combat engagements
+
 
 ### Previous Changes (January 30, 2026 - Part 21)
 
