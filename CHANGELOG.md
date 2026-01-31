@@ -5,7 +5,24 @@
 ### Overview
 Functional DCSS automation bot with local PTY execution, character creation automation, real-time screen parsing with pyte buffer as primary game state source, and complete character creation phase screenshot logging.
 
-### Latest Changes (January 30, 2026 - Part 23-24)
+### Latest Changes (January 30, 2026 - Hotfix)
+
+**HOTFIX: AttributeError Crash in Level-Up Stat Increase Tracking**:
+- **Issue**: Bot crashed with `AttributeError: 'GameStateParser' object has no attribute 'extract_level'` during Move 87 when checking attribute increase prompt
+- **Root Cause**: v1.5 code called `self.parser.extract_level(output)` which doesn't exist. Tried to call a non-existent method instead of using existing GameStateParser API
+- **Code Changes**:
+  - `bot.py` line 1107: Changed from `self.parser.extract_level(output)` to `self.parser.state.experience_level`
+  - Uses existing GameStateParser attribute to access current player level
+  - Eliminates unnecessary method call and uses direct state access
+- **Impact**: 
+  - Bot no longer crashes when processing attribute increase prompts
+  - Gameplay continues smoothly through level-ups
+- **Testing**: ✅ All 76 tests passing - verified:
+  - No AttributeError when level-up stat increase prompt appears
+  - Proper level tracking using existing GameStateParser API
+- **Result**: v1.5 now fully functional without crashes
+
+### Previous Changes (January 30, 2026 - Part 23-24)
 
 **Bug Fix: Level-Up Stat Increase Prompt Re-Triggering Infinite 'S' Commands**:
 - **Issue**: After leveling up, bot correctly sent 'S' to increase Strength in response to "Increase (S)trength...?" prompt. However, on the next game loop iteration, bot detected the SAME stat increase prompt still visible on screen and sent 'S' again. This triggered the "Save game and return to main menu?" exit prompt, which bot misinterpreted as another 'S' prompt and sent another 'S', causing game exit
@@ -28,6 +45,7 @@ Functional DCSS automation bot with local PTY execution, character creation auto
   - Smooth gameplay through level-ups with proper one-time attribute increase
 - **Testing**: ✅ All 76 tests passing (+1 new regression test) - verified:
   - Level-up stat increase prompt responded to exactly once per level
+
   - Exit prompt no longer triggered by attribute selection
   - Game continues normally after stat increase
 - **Result**: Bot can now level up cleanly without triggering unexpected game exit
