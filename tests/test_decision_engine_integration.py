@@ -16,6 +16,7 @@ class TestDecisionEngineIntegration:
         ctx = DecisionContext(
             output="", health=80, max_health=100, level=1, dungeon_level=1,
             enemy_detected=True, enemy_name="goblin",
+            enemy_direction=None,
             items_on_ground=False, in_shop=False,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=True,  # ← Menu prompt (CRITICAL priority)
@@ -38,6 +39,7 @@ class TestDecisionEngineIntegration:
         ctx = DecisionContext(
             output="", health=80, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="",
+            enemy_direction=None,
             items_on_ground=False, in_shop=True,  # ← Shop detected
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
@@ -60,6 +62,7 @@ class TestDecisionEngineIntegration:
         ctx = DecisionContext(
             output="", health=80, max_health=100, level=2, dungeon_level=1,
             enemy_detected=False, enemy_name="",
+            enemy_direction=None,
             items_on_ground=False, in_shop=False,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False,
@@ -85,6 +88,7 @@ class TestDecisionEngineIntegration:
         ctx_combat = DecisionContext(
             output="", health=80, max_health=100, level=1, dungeon_level=1,
             enemy_detected=True, enemy_name="bat",
+            enemy_direction=None,
             items_on_ground=False, in_shop=False,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
@@ -103,6 +107,7 @@ class TestDecisionEngineIntegration:
         ctx_wait = DecisionContext(
             output="", health=75, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="",
+            enemy_direction=None,
             items_on_ground=False, in_shop=False,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
@@ -120,6 +125,7 @@ class TestDecisionEngineIntegration:
         ctx_recover = DecisionContext(
             output="", health=40, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="",
+            enemy_direction=None,
             items_on_ground=False, in_shop=False,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
@@ -141,6 +147,7 @@ class TestDecisionEngineIntegration:
         ctx_good = DecisionContext(
             output="", health=75, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="",
+            enemy_direction=None,
             items_on_ground=False, in_shop=False,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
@@ -157,6 +164,7 @@ class TestDecisionEngineIntegration:
         ctx_threshold = DecisionContext(
             output="", health=60, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="",
+            enemy_direction=None,
             items_on_ground=False, in_shop=False,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
@@ -173,6 +181,7 @@ class TestDecisionEngineIntegration:
         ctx_low = DecisionContext(
             output="", health=50, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="",
+            enemy_direction=None,
             items_on_ground=False, in_shop=False,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
@@ -194,6 +203,7 @@ class TestDecisionEngineIntegration:
         ctx = DecisionContext(
             output="", health=80, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="",
+            enemy_direction=None,
             items_on_ground=True,  # Items available
             in_shop=False, in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
@@ -214,7 +224,7 @@ class TestDecisionEngineIntegration:
         
         ctx = DecisionContext(
             output="", health=80, max_health=100, level=1, dungeon_level=1,
-            enemy_detected=True, enemy_name="goblin",  # Enemy present (would normally fight)
+            enemy_detected=True, enemy_name="goblin", enemy_direction=None,  # Enemy present (would normally fight)
             items_on_ground=False, in_shop=False,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
@@ -237,6 +247,7 @@ class TestDecisionEngineIntegration:
         ctx1 = DecisionContext(
             output="", health=80, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="",
+            enemy_direction=None,
             items_on_ground=False, in_shop=False,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
@@ -254,6 +265,7 @@ class TestDecisionEngineIntegration:
         ctx2 = DecisionContext(
             output="", health=80, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="",
+            enemy_direction=None,
             items_on_ground=False, in_shop=False,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
@@ -280,6 +292,7 @@ class TestDecisionEngineWithRealGameStates:
         ctx = DecisionContext(
             output="", health=9, max_health=9, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="",
+            enemy_direction=None,
             items_on_ground=False, in_shop=False,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
@@ -299,6 +312,7 @@ class TestDecisionEngineWithRealGameStates:
         ctx = DecisionContext(
             output="", health=2, max_health=20, level=3, dungeon_level=2,
             enemy_detected=False, enemy_name="",
+            enemy_direction=None,
             items_on_ground=False, in_shop=False,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,

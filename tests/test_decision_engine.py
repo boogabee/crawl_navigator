@@ -32,6 +32,7 @@ class TestRule:
         ctx = DecisionContext(
             output="", health=75, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=False, save_game_prompt=False,
@@ -54,6 +55,7 @@ class TestRule:
         ctx = DecisionContext(
             output="", health=25, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=False, save_game_prompt=False,
@@ -72,6 +74,7 @@ class TestDecisionContext:
         ctx = DecisionContext(
             output="", health=50, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=False, save_game_prompt=False,
@@ -86,6 +89,7 @@ class TestDecisionContext:
         ctx = DecisionContext(
             output="", health=0, max_health=0, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=False, save_game_prompt=False,
@@ -135,6 +139,7 @@ class TestDecisionEngine:
         ctx = DecisionContext(
             output="", health=75, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=False, save_game_prompt=False,
@@ -158,6 +163,7 @@ class TestDecisionEngine:
         ctx = DecisionContext(
             output="", health=50, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=False, save_game_prompt=False,
@@ -178,6 +184,7 @@ class TestDecisionEngine:
         ctx = DecisionContext(
             output="", health=50, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=False, save_game_prompt=False,
@@ -204,6 +211,7 @@ class TestDefaultEngine:
         ctx = DecisionContext(
             output="", health=80, max_health=100, level=1, dungeon_level=1,
             enemy_detected=True, enemy_name="goblin", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=False, save_game_prompt=False,
@@ -221,6 +229,7 @@ class TestDefaultEngine:
         ctx = DecisionContext(
             output="", health=40, max_health=100, level=1, dungeon_level=1,
             enemy_detected=True, enemy_name="bat", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=False, save_game_prompt=False,
@@ -241,6 +250,7 @@ class TestDefaultEngine:
         ctx = DecisionContext(
             output="", health=80, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=False, save_game_prompt=False,
@@ -257,6 +267,7 @@ class TestDefaultEngine:
         ctx = DecisionContext(
             output="", health=40, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=False, save_game_prompt=False,
@@ -273,6 +284,7 @@ class TestDefaultEngine:
         ctx = DecisionContext(
             output="", health=80, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="", items_on_ground=False, in_shop=True,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=False, save_game_prompt=False,
@@ -289,6 +301,7 @@ class TestDefaultEngine:
         ctx = DecisionContext(
             output="", health=80, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=True, attribute_increase_prompt=False, save_game_prompt=False,
@@ -305,6 +318,7 @@ class TestDefaultEngine:
         ctx = DecisionContext(
             output="", health=80, max_health=100, level=2, dungeon_level=1,
             enemy_detected=False, enemy_name="", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=True, save_game_prompt=False,
@@ -321,6 +335,7 @@ class TestDefaultEngine:
         ctx = DecisionContext(
             output="", health=80, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=False, save_game_prompt=False,
@@ -337,6 +352,7 @@ class TestDefaultEngine:
         ctx = DecisionContext(
             output="", health=80, max_health=100, level=1, dungeon_level=1,
             enemy_detected=False, enemy_name="", items_on_ground=False, in_shop=False,
+            enemy_direction=None,
             in_inventory_screen=False, in_item_pickup_menu=False, in_menu=False,
             equip_slot_pending=False, quaff_slot_pending=False, has_level_up=False,
             has_more_prompt=False, attribute_increase_prompt=False, save_game_prompt=False,

@@ -17,6 +17,21 @@ from enum import Enum
 from loguru import logger
 
 
+def _direction_name(direction: Optional[str]) -> str:
+    """Convert DCSS direction key to human-readable name."""
+    direction_names = {
+        'h': 'left',
+        'j': 'down',
+        'k': 'up',
+        'l': 'right',
+        'y': 'up-left',
+        'u': 'up-right',
+        'b': 'down-left',
+        'n': 'down-right',
+    }
+    return direction_names.get(direction, 'unknown')
+
+
 class Priority(Enum):
     """Priority levels for decision rules."""
     CRITICAL = 1      # Immediate threats, menu prompts
@@ -41,6 +56,7 @@ class DecisionContext:
     # Detection results
     enemy_detected: bool
     enemy_name: str
+    enemy_direction: Optional[str]  # Direction to move toward enemy ('h','j','k','l','y','u','b','n') or None
     items_on_ground: bool
     in_shop: bool
     in_inventory_screen: bool
@@ -282,13 +298,15 @@ def create_default_engine() -> DecisionEngine:
     
     # Rule: Combat with low health - move toward enemy to engage
     # Note: When health is low, DCSS disables autofight (TAB) command.
-    # Must manually move toward the enemy to fight. Using 'l' (move right)
-    # as default direction; will need direction calculation later for better accuracy.
+    # Must manually move toward the enemy to fight using calculated direction.
     engine.add_rule(Rule(
         name="Combat (low health - move to engage)",
         priority=Priority.NORMAL,
         condition=lambda ctx: ctx.enemy_detected and ctx.health_percentage <= 70,
-        action=lambda ctx: ('l', f"Moving toward {ctx.enemy_name} to engage (low health: {ctx.health_percentage:.1f}%)")
+        action=lambda ctx: (
+            ctx.enemy_direction if ctx.enemy_direction else 'l',
+            f"Moving {_direction_name(ctx.enemy_direction)} toward {ctx.enemy_name} to engage (low health: {ctx.health_percentage:.1f}%)"
+        )
     ))
     
     # Rule: Combat with normal health - autofight

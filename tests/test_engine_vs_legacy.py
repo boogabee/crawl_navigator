@@ -65,6 +65,7 @@ class TestEngineVsLegacy:
             'dungeon_level': 1,
             'enemy_detected': False,
             'enemy_name': '',
+            'enemy_direction': None,
             'items_on_ground': False,
             'in_shop': False,
             'in_inventory_screen': False,

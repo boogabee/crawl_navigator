@@ -1522,6 +1522,11 @@ class DCSSBot:
         
         # Detect game situations (using existing helper methods)
         enemy_detected, enemy_name = self._detect_enemy_in_range(output)
+        enemy_direction = None
+        if enemy_detected:
+            # Calculate direction to move toward the enemy when low health
+            enemy_direction = self._calculate_direction_to_enemy(output, enemy_name)
+        
         items_on_ground = self._detect_items_on_ground(output)
         in_shop = self._is_in_shop(output)
         in_inventory_screen = self._check_and_handle_inventory_state(output) is not None
@@ -1547,6 +1552,7 @@ class DCSSBot:
             dungeon_level=dungeon_level,
             enemy_detected=enemy_detected,
             enemy_name=enemy_name,
+            enemy_direction=enemy_direction,
             items_on_ground=items_on_ground,
             in_shop=in_shop,
             in_inventory_screen=in_inventory_screen,
@@ -2001,6 +2007,111 @@ class DCSSBot:
         
         logger.debug("No enemies shown in TUI monsters section")
         return False, ""
+
+    def _calculate_direction_to_enemy(self, output: str, enemy_name: str) -> Optional[str]:
+        """
+        Calculate the direction to move toward an enemy.
+        
+        Uses the TUI monsters list to find the enemy character, then scans the map
+        to locate the player (@) and enemy character, calculating the optimal direction.
+        
+        DCSS movement keys:
+        - 'h' = left,  'j' = down,  'k' = up,    'l' = right
+        - 'y' = up-left,  'u' = up-right,  'b' = down-left,  'n' = down-right
+        
+        Args:
+            output: Current game output (TUI display)
+            enemy_name: Name of the enemy to move toward
+            
+        Returns:
+            A DCSS direction key ('h', 'j', 'k', 'l', 'y', 'u', 'b', 'n') or None if unable to calculate
+        """
+        if not output or not enemy_name:
+            return None
+        
+        try:
+            clean = self._clean_ansi(output)
+            lines = clean.split('\n')
+            
+            # Find the enemy character from the TUI monsters section
+            # The monsters section shows: "X   creature_name" where X is the map symbol
+            enemy_symbol = None
+            for line in lines:
+                # Look for the enemy name in the line
+                if enemy_name in line:
+                    # Extract the first character of the line as the symbol
+                    # Pattern: "[a-zA-Z]\s{3,}name" = symbol with 3+ spaces then name
+                    match = re.search(r'^([a-zA-Z])\s{3,}' + re.escape(enemy_name), line)
+                    if match:
+                        enemy_symbol = match.group(1)
+                        logger.debug(f"Found enemy symbol '{enemy_symbol}' for {enemy_name}")
+                        break
+            
+            if not enemy_symbol:
+                logger.debug(f"Could not find enemy symbol for {enemy_name}")
+                return None
+            
+            # Now find the map section and locate player (@) and enemy
+            # The map typically spans lines 1-20 (0-indexed: 1-20), columns 0-80 (typical map width)
+            player_row = None
+            player_col = None
+            enemy_row = None
+            enemy_col = None
+            
+            for row_idx, line in enumerate(lines[:21]):  # Map is typically in first 21 lines
+                # Find player (@)
+                if '@' in line:
+                    player_col = line.index('@')
+                    player_row = row_idx
+                
+                # Find enemy character
+                if enemy_symbol in line:
+                    # Make sure this is the map, not the monsters section
+                    # (monsters section is typically after line 21)
+                    if row_idx <= 20:
+                        enemy_col = line.index(enemy_symbol)
+                        enemy_row = row_idx
+            
+            if player_row is None or enemy_row is None:
+                logger.debug(f"Could not locate player or enemy on map (player: {player_row}, enemy: {enemy_row})")
+                return None
+            
+            # Calculate direction from player to enemy
+            row_diff = enemy_row - player_row  # Positive = down, negative = up
+            col_diff = enemy_col - player_col  # Positive = right, negative = left
+            
+            logger.debug(f"Player at ({player_row}, {player_col}), Enemy at ({enemy_row}, {enemy_col}), diff: ({row_diff}, {col_diff})")
+            
+            # Determine direction based on differences
+            # Prioritize horizontal/vertical over diagonal when one difference is much larger
+            if abs(row_diff) > abs(col_diff):
+                # Vertical dominates
+                if row_diff > 0:
+                    return 'j'  # down
+                else:
+                    return 'k'  # up
+            elif abs(col_diff) > abs(row_diff):
+                # Horizontal dominates
+                if col_diff > 0:
+                    return 'l'  # right
+                else:
+                    return 'h'  # left
+            else:
+                # Diagonal - use appropriate diagonal key
+                if row_diff > 0:  # Down
+                    if col_diff > 0:
+                        return 'n'  # down-right
+                    else:
+                        return 'b'  # down-left
+                else:  # Up
+                    if col_diff > 0:
+                        return 'u'  # up-right
+                    else:
+                        return 'y'  # up-left
+        
+        except Exception as e:
+            logger.debug(f"Error calculating direction to enemy: {e}")
+            return None
 
     def _is_in_shop(self, output: str) -> bool:
         """
