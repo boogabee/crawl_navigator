@@ -127,7 +127,9 @@ while self.move_count < max_steps:
   # Format: X   creature_name (where X is creature symbol)
   enemy_detected, enemy_name = self._detect_enemy_in_range()
   if enemy_detected:
-      return self._return_action('f', f"Flee from {enemy_name}")
+      # NOTE: 'f' is not a valid flee command in DCSS!
+      # Use movement keys (hjklyubn) or '5' to rest instead
+      return self._return_action('.', f"Waiting for {enemy_name}")
   ```
 - **Action returns**: Use `_return_action(command, reason)` helper (lines 1050-1054)
   - Sets `self.action_reason` for activity log
@@ -245,6 +247,25 @@ if self.last_screen:
 **scripts/** - Utility scripts:
 - `run_tests.sh` - Test runner (activates venv automatically)
 - `crawl_wrapper.sh` - Crawl launch wrapper
+
+## DCSS Command Reference
+
+**Valid Movement Commands**:
+- `'h'` = move left, `'j'` = move down, `'k'` = move up, `'l'` = move right
+- `'y'` = move up-left, `'u'` = move up-right, `'b'` = move down-left, `'n'` = move down-right
+
+**Valid Combat/Action Commands**:
+- `'\t'` (TAB) = autofight (only works when health > 70%)
+- `'.'` = wait/pass turn
+- `'5'` = rest for ~100 turns (can be interrupted)
+- `'g'` = grab items on ground
+- `'o'` = auto-explore
+- `'\x1b'` (ESC) = cancel/escape menus
+- `'D'` = confirm Dungeon in menus
+
+**CRITICAL - DO NOT USE**:
+- `'f'` = **NOT A VALID COMMAND IN DCSS!** There is no 'f' for flee. Use movement keys (hjklyubn), wait ('.'), or rest ('5') instead.
+- Never attempt to use 'f' for any purpose - it will not work as intended
 
 ## Common Pitfalls to Avoid
 
