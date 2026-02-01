@@ -280,12 +280,15 @@ def create_default_engine() -> DecisionEngine:
     
     # NORMAL PRIORITY: Combat
     
-    # Rule: Combat with low health - movement instead of autofight
+    # Rule: Combat with low health - move toward enemy to engage
+    # Note: When health is low, DCSS disables autofight (TAB) command.
+    # Must manually move toward the enemy to fight. Using 'l' (move right)
+    # as default direction; will need direction calculation later for better accuracy.
     engine.add_rule(Rule(
-        name="Combat (low health - movement)",
+        name="Combat (low health - move to engage)",
         priority=Priority.NORMAL,
         condition=lambda ctx: ctx.enemy_detected and ctx.health_percentage <= 70,
-        action=lambda ctx: ("", f"Combat: Moving toward {ctx.enemy_name} (low health: {ctx.health_percentage:.1f}%)")
+        action=lambda ctx: ('l', f"Moving toward {ctx.enemy_name} to engage (low health: {ctx.health_percentage:.1f}%)")
     ))
     
     # Rule: Combat with normal health - autofight

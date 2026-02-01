@@ -216,7 +216,7 @@ class TestDefaultEngine:
         assert 'Autofight' in reason
     
     def test_combat_with_low_health(self):
-        """Test that combat uses movement with low health."""
+        """Test that combat uses movement toward enemy with low health."""
         engine = create_default_engine()
         ctx = DecisionContext(
             output="", health=40, max_health=100, level=1, dungeon_level=1,
@@ -229,10 +229,11 @@ class TestDefaultEngine:
             has_gameplay_indicators=True, gameplay_started=True, goto_state=None, goto_target_level=0
         )
         command, reason = engine.decide(ctx)
-        # Should still evaluate but movement will be chosen by bot (engine returns empty command here)
-        # The condition checks health <= 70, so at 40% this should match the movement rule
-        # However, the action returns empty string which is handled by bot
-        assert '40' in reason or 'low' in reason.lower()
+        # When health is low, DCSS disables autofight, so bot must move toward enemy
+        # Engine returns a movement command ('l' = right, will need direction calculation later)
+        assert command == 'l'  # Move right as default direction
+        assert 'low health' in reason.lower()
+        assert 'bat' in reason.lower()
     
     def test_exploration_with_good_health(self):
         """Test exploration rule triggers with good health and no enemies."""
