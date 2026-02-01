@@ -17,13 +17,13 @@ This codebase implements an automated bot for Dungeon Crawl Stone Soup (DCSS) th
 
 ### Key Components
 
-1. **LocalCrawlClient** (`local_client.py`): Manages Crawl subprocess via PTY
+1. **LocalCrawlClient** (`src/local_client.py`): Manages Crawl subprocess via PTY
    - **Critical**: Uses `cbreak mode` (not raw): `ICANON` disabled, `ECHO` enabled, `ISIG` enabled
    - Why cbreak: Crawl's ncurses needs character-by-character input WITH echo feedback for menu navigation
    - `read_output(timeout=X.X)` reads with select() - must respect full timeout duration (v1.1 bug: line 172 had premature break)
    - Writes single characters via `send_command(char)` for menu navigation and name entry
 
-2. **ScreenBuffer** (bot.py lines 21-55): pyte-based terminal emulation - PRIMARY SOURCE OF GAME STATE
+2. **ScreenBuffer** (src/bot.py lines 21-55): pyte-based terminal emulation - PRIMARY SOURCE OF GAME STATE
    - **CRITICAL**: The pyte buffer is the authoritative, complete game state
    - Raw PTY output contains only ANSI code DELTAS (incremental changes), not complete screen
    - pyte buffer ACCUMULATES all deltas into a 160x40 character grid, maintaining full reconstructed state
@@ -32,7 +32,7 @@ This codebase implements an automated bot for Dungeon Crawl Stone Soup (DCSS) th
    - Used for BOTH game state decisions AND visual screenshots
    - Example: Raw output may have `[1;33H` cursor code, but buffer has complete "J   endoplasm" in monsters section
 
-3. **GameStateParser** (`game_state.py`): Regex-based screen text extraction from pyte buffer
+3. **GameStateParser** (`src/game_state.py`): Regex-based screen text extraction from pyte buffer
    - Parses TUI display text (from pyte buffer) as source of truth for game state
    - Extracts from TUI: health, mana, dungeon level, experience, visible enemies list
    - Uses regex patterns like `r'Health: (\d+)/(\d+)'` for health extraction
@@ -41,7 +41,7 @@ This codebase implements an automated bot for Dungeon Crawl Stone Soup (DCSS) th
    - **IMPORTANT**: Always receive text from `screen_buffer.get_screen_text()`, NOT from raw `last_screen`
    - **DEPRECATED**: Message parsing and raw PTY output parsing are no longer used for decisions (messages ephemeral, raw output is delta-only)
 
-4. **DCSSBot** (`bot.py`): Main orchestrator
+4. **DCSSBot** (`src/bot.py`): Main orchestrator
    - **Critical state variables**:
      - `gameplay_started`: Once True, stays True (no resets mid-game)
      - `last_screen`: Current raw PTY output with ANSI codes
@@ -58,7 +58,7 @@ This codebase implements an automated bot for Dungeon Crawl Stone Soup (DCSS) th
 
 ```python
 while self.move_count < max_steps:
-    response = self.ssh_client.read_output(timeout=3.0)      # GET RAW OUTPUT (DELTA)
+    response = self.local_client.read_output(timeout=3.0)    # GET RAW OUTPUT (DELTA)
     if response:
         self.last_screen = response                          # Store raw for logging
         self.screen_buffer.update_from_output(response)      # Accumulate into pyte buffer
@@ -68,7 +68,7 @@ while self.move_count < max_steps:
     screen_text = self.screen_buffer.get_screen_text()       # Get COMPLETE reconstructed state
     action = self._decide_action(screen_text)                # DECIDE ACTION (based on buffer, not delta)
     if action:
-        self.ssh_client.send_command(action)                 # SEND ACTION
+        self.local_client.send_command(action)               # SEND ACTION
         self._save_debug_screen(self.last_screen, ...)       # LOG SCREEN
 ```
 
@@ -81,21 +81,38 @@ while self.move_count < max_steps:
 
 ### 2. State Machine Pattern
 
-**CharacterCreationStateMachine** (`char_creation_state_machine.py`):
+**CharacterCreationStateMachine** (`src/state_machines/char_creation_state_machine.py`):
 - Detects menu type by scanning cleaned text for markers like `"Strength"`, `"choose a job"`
 - Returns state names: `'startup'`, `'species'`, `'class_select'`, `'background'`, `'skills'`, `'error'`
 - Used during `_local_startup()` to auto-navigate menus
 - Screenshots now saved for each menu transition (v1.2 enhancement, lines 1420-1429)
 
-**GameStateMachine** (`game_state_machine.py`):
+**GameStateMachine** (`src/state_machines/game_state_machine.py`):
 - High-level states: DISCONNECTED → CONNECTED → GAMEPLAY
 - Used by state tracker to validate game progression
 - Less critical than CharCreationStateMachine (gameplay logic uses flags more than states)
 
-### 3. Decision Logic Pattern
+### 3. Decision Logic Pattern (v1.8+: Rule-Based Engine)
 
-**`_decide_action()` method** (bot.py, lines 1090-1400):
-- Follows priority order: level-up → more prompts → menu → gameplay
+**DecisionEngine** (`src/decision_engine.py`, v1.8+): Rule-based decision architecture
+- **Purpose**: Replace 1200+ line `_decide_action()` with declarative rules (Phase 3 refactoring)
+- **Architecture**:
+  - `Rule`: Dataclass with (name, priority, condition, action)
+  - `Priority`: CRITICAL (1) → URGENT (5) → HIGH (10) → NORMAL (20) → LOW (30)
+  - `DecisionContext`: 30+ fields capturing complete game state snapshot
+  - `DecisionEngine.decide()`: Evaluates rules in priority order, returns first match
+- **Key Insight**: Rules are data, not procedural code. Easier to test, extend, prioritize.
+- **Default Rules** (~20 configured): Cover all game situations from prompts to combat to exploration
+- **Integration**: `_prepare_decision_context()` extracts game state into DecisionContext (bot.py, lines 1560+)
+- **Transition**: Phase 3a complete (engine built + tested), Phase 3b ready (incremental migration of _decide_action logic)
+
+**Legacy: `_decide_action()` method** (bot.py, currently ~1200 lines):
+- Follows priority order: level-up → more prompts → shop exit → menu → gameplay
+- **Shop Detection & Exit** (v0.2.2+):
+  - Helper method `_is_in_shop()` detects shop interfaces by checking for "Welcome to" + "Shop!" and "[Esc] exit" patterns
+  - When shop detected, bot immediately sends Escape key (`\x1b`) to exit
+  - Prevents accidental item purchases during exploration
+  - Shop check happens early, before other game logic
 - **Gameplay Actions**: All decisions based on TUI display state (not message stream)
   - Enemy detection: Calls `_detect_enemy_in_range()` which parses TUI monsters section
   - Health tracking: Reads from TUI status line (not messages)
@@ -115,6 +132,7 @@ while self.move_count < max_steps:
 - **Action returns**: Use `_return_action(command, reason)` helper (lines 1050-1054)
   - Sets `self.action_reason` for activity log
   - Example: `return self._return_action('o', "Auto-explore (health: 75%)")`
+- **Note**: To be gradually replaced by DecisionEngine rules during Phase 3b
 
 ### 4. Screenshot Capture Pattern
 
@@ -179,22 +197,63 @@ if self.last_screen:
 
 ### Testing
 - Located in `tests/` with conftest.py fixtures
-- Run with `bash run_tests.sh` or `pytest tests/`
-- All 76 tests must pass (as of v1.5: 59 original + 17 real game screen validation tests)
+- Run with `bash scripts/run_tests.sh` or `pytest tests/`
+- All 240 tests must pass (Phase 3 complete: 214 original + 26 new comparison tests)
 - Mock fixtures in conftest: `char_creation_state_machine`, `game_state_parser`, `game_state_tracker`
 - Real game screen fixtures: `tests/fixtures/game_screens/` - 4 representative game states
 
 ### File Organization
-- Core bot logic: `bot.py` (1787 lines - large, but organized by method type)
-- PTY subprocess: `local_client.py` (291 lines)
-- Game state extraction: `game_state.py` (285 lines)
-- State machines: `char_creation_state_machine.py`, `game_state_machine.py`
-- Display: `bot_unified_display.py` (227 lines)
-- Entry point: `main.py` (uses argparse for --steps, --debug, --crawl-cmd)
+
+**Root Level** (5 essential files):
+- `main.py` - Entry point (uses argparse for --steps, --debug, --crawl-cmd)
+- `README.md` - Project overview
+- `pytest.ini` - Test configuration
+- `requirements.txt` - Dependencies
+- `LICENSE` - License
+
+**src/** - Core bot logic (9 modules organized by concern):
+- `bot.py` (2200+ lines) - Main orchestrator with decision logic
+- `local_client.py` (335 lines) - PTY subprocess management
+- `game_state.py` (550 lines) - Game state parsing and extraction
+- `decision_engine.py` (372 lines) - Rule-based decision system
+- `tui_parser.py` - TUI layout parsing utilities
+- `state_machines/` - State machine implementations
+  - `char_creation_state_machine.py` - Character creation menu navigation
+  - `game_state_machine.py` - High-level game state tracking
+- `display/` - Display components
+  - `bot_unified_display.py` (218 lines) - Unified TUI + activity panel display
+- `utils/` - Utilities
+  - `credentials.py` - Crawl command configuration
+
+**tests/** - Test suite (13 test files, 240 tests):
+- `conftest.py` - Pytest fixtures and configuration
+- `test_*.py` - Individual test modules
+- `fixtures/` - Test data and game screen samples
+
+**docs/** - Documentation (55+ files, 760K):
+- Core docs: ARCHITECTURE.md, CHANGELOG.md, DEVELOPER_GUIDE.md, QUICK_START.md
+- Analysis: CODE_REVIEW_*.md, LEGACY_CODE_ANALYSIS.md, etc.
+- Reports: PHASE_3_*.md, PERFORMANCE_TEST_*.md, etc.
+- Implementation guides: DECISION_ENGINE_*.md, EQUIPMENT_SYSTEM.md, etc.
+
+**examples/** - Example and debug scripts:
+- `example_tui_parsing.py` - TUI parsing examples
+- `test_health_debug.py` - Health tracking debug tools
+- `debug_crawl_startup.py` - Startup sequence debugging
+- `bot_display.py` - Legacy display utilities
+
+**scripts/** - Utility scripts:
+- `run_tests.sh` - Test runner (activates venv automatically)
+- `crawl_wrapper.sh` - Crawl launch wrapper
 
 ## Common Pitfalls to Avoid
 
-1. **Using raw output for decision logic**: BUG - Raw PTY output is only ANSI code deltas, not complete text. Must use `screen_buffer.get_screen_text()` for all game state decisions (enemy detection, health tracking, etc). This was the root cause of v1.3 enemy detection failures.
+1. **Not using the virtual environment**: CRITICAL - Always activate `venv/bin/activate` before executing Python. Running `python` without the venv may use system Python instead of the project's dependencies, causing import errors or version conflicts.
+   - ❌ BAD: `python main.py --steps 100`
+   - ✅ GOOD: `source venv/bin/activate && python main.py --steps 100`
+   - ✅ ALSO GOOD: `/home/skahler/workspace/crawl_navigator/venv/bin/python main.py --steps 100`
+
+2. **Using raw output for decision logic**: BUG - Raw PTY output is only ANSI code deltas, not complete text. Must use `screen_buffer.get_screen_text()` for all game state decisions (enemy detection, health tracking, etc). This was the root cause of v1.3 enemy detection failures.
 
 2. **Undefined variables**: Bug v1.2 used `complete_screen` instead of `self.last_screen` (crashed gameplay loop). Always use `self.last_screen`.
 
@@ -216,17 +275,37 @@ if self.last_screen:
 
 ## Development Workflows
 
+### Virtual Environment
+
+**CRITICAL**: This project uses a Python virtual environment located at `venv/`. Always activate it before executing Python code or commands:
+
+```bash
+source venv/bin/activate
+```
+
+After activation, the terminal prompt will show `(venv)` prefix, indicating the venv is active. All Python execution must use this venv - never run `python` or `pip` commands without it.
+
+**For AI agents**: When executing Python code, ALWAYS:
+1. First run: `source venv/bin/activate`
+2. Then execute Python commands (e.g., `python main.py`, `pytest`, etc.)
+3. Alternatively, use the full venv Python path: `/home/skahler/workspace/crawl_navigator/venv/bin/python main.py`
+
 ### Running the Bot
 ```bash
+source venv/bin/activate
 python main.py --steps 100 --debug
 ```
 Outputs: Session log to `logs/bot_session_YYYYMMDD_HHMMSS.log`, screenshots to `logs/screens_YYYYMMDD_HHMMSS/`.
 
 ### Running Tests
 ```bash
-bash run_tests.sh
+bash scripts/run_tests.sh
 ```
-Or individual test: `pytest tests/test_bot.py::test_character_creation_flow -v`.
+The test script automatically activates the venv. For individual tests:
+```bash
+source venv/bin/activate
+pytest tests/test_bot.py::test_character_creation_flow -v
+```
 
 ### Adding New Game Logic
 1. Add action decision in `_decide_action()` using `_return_action(command, reason)`
@@ -241,6 +320,20 @@ Or individual test: `pytest tests/test_bot.py::test_character_creation_flow -v`.
 4. Review `action_reason` in activity panel to understand decision flow
 
 ## Version History & Recent Fixes
+
+**v1.8** (Jan 31, 2026): DecisionEngine Phase 3 Refactoring (Biggest Payoff - 1100 lines saved):
+  - **Major Architecture Improvement**: Replaced 1200+ line `_decide_action()` approach with rule-based DecisionEngine
+  - Created `decision_engine.py` (363 lines): Rule, Priority, DecisionContext, DecisionEngine classes
+  - Created comprehensive test suite (358 lines, 22 tests): All passing, 0 regressions
+  - Added `_prepare_decision_context()` method (60 lines) to extract game state
+  - Integrated engine into bot.py with clean separation of concerns
+  - Default engine configured with ~20 rules covering all game situations
+  - Full type hints and documentation (1,050+ lines of docs)
+  - **Phase 3a**: Complete (engine built + tested)
+  - **Phase 3b**: Ready (incremental migration of _decide_action logic)
+  - **Status**: Foundation laid for 50%+ complexity reduction in final migration
+  - All 168 tests passing (146 existing + 22 new DecisionEngine tests)
+  - See: `decision_engine.py`, `DECISION_ENGINE_IMPLEMENTATION.md`, `DECISION_ENGINE_QUICK_REFERENCE.md`
 
 - **v1.5** (Jan 30, 2026): Level-up stat increase per-level tracking + inventory message filtering:
   - Fixed level-up stat increase re-triggering infinite 'S' commands causing game exit
@@ -257,6 +350,6 @@ Or individual test: `pytest tests/test_bot.py::test_character_creation_flow -v`.
 - **v1.3** (Jan 30, 2026): TUI-First Architecture - Removed all message stream dependency, enemy detection now solely based on TUI monsters section
 - **v1.2** (Jan 29, 2026): Fixed undefined `complete_screen` crash, contradictory gameplay state logic, added per-menu screenshots
 - **v1.1** (Jan 28): Fixed PTY timeout bug (v1.0 exit after ~0.5s instead of full timeout)
-- **v1.0** (Jan 27): SSH removal, integration of python-statemachine and blessed frameworks
+- **v1.0** (Jan 27): Integration of python-statemachine and blessed frameworks
 
 Reference CHANGELOG.md for full history.

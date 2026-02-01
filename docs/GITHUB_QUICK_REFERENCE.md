@@ -69,7 +69,6 @@ cd /path/to/crawl-navigator
 
 **Authentication fails**
 - For HTTPS: Use GitHub token as password (not password)
-- For SSH: Make sure SSH keys are configured
 
 ## Next Steps
 

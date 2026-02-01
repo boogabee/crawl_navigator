@@ -2,7 +2,7 @@
 
 import time
 import re
-from typing import Optional
+from typing import Optional, Tuple
 from datetime import datetime
 import os
 import pyte
@@ -10,13 +10,13 @@ import random
 import string
 from loguru import logger
 
-from local_client import LocalCrawlClient
-from game_state import GameStateParser
-from game_state_machine import GameStateMachine
-from char_creation_state_machine import CharacterCreationStateMachine
-from bot_unified_display import UnifiedBotDisplay
-from tui_parser import DCSSLayoutParser
-from credentials import CRAWL_COMMAND
+from src.local_client import LocalCrawlClient
+from src.game_state import GameStateParser
+from src.state_machines.game_state_machine import GameStateMachine
+from src.state_machines.char_creation_state_machine import CharacterCreationStateMachine
+from src.display.bot_unified_display import UnifiedBotDisplay
+from src.decision_engine import DecisionEngine, DecisionContext, create_default_engine
+from src.tui_parser import DCSSLayoutParser
 
 
 class ScreenBuffer:
@@ -74,7 +74,7 @@ class DCSSBot:
         """
         # Initialize local Crawl client
         logger.info("Using LOCAL execution mode")
-        self.ssh_client = LocalCrawlClient(crawl_command=crawl_command or '/usr/games/crawl')
+        self.local_client = LocalCrawlClient(crawl_command=crawl_command or '/usr/games/crawl')
         
         self.parser = GameStateParser()
         self.state_tracker = GameStateMachine()
@@ -139,6 +139,32 @@ class DCSSBot:
         self.last_level_up_processed = 0  # Track last level we processed level-up for (avoid re-detecting same message)
         self.last_attribute_increase_level = 0  # Track level we processed attribute increase for (avoid re-prompting)
         
+        # Inventory and item tracking
+        self.quaff_slot = None  # Current slot being quaffed (set by _identify_untested_potions)
+        self.last_items_on_ground_check = 0  # Move count when we last checked for items
+        self.last_grab_attempt = 0  # Move count when we last tried to grab items
+        self.last_grab_failed = False  # Whether the last grab attempt found nothing
+        self.inventory_stale = True  # Whether our inventory cache needs refreshing
+        self.last_inventory_refresh = 0  # Move count when we last refreshed inventory
+        self.in_inventory_screen = False  # Whether we're currently viewing inventory
+        self.in_item_pickup_menu = False  # Whether we're in the "Pick up what?" menu
+        
+        # Equipment management
+        self.equip_slot = None  # Current slot being equipped (set by _find_and_equip_better_armor)
+        self.last_equipment_check = 0  # Move count when we last checked for equipment upgrades
+        
+        # Initialize decision engine (Phase 3 refactor: replaces 1200-line _decide_action method)
+        self.decision_engine = create_default_engine()
+        
+        # Feature flag for Phase 3b migration: use engine vs legacy implementation
+        # Set via --use-engine command-line flag or programmatically
+        self.use_decision_engine = False
+        
+        # Phase 3b migration tracking
+        self.engine_decisions_made = 0
+        self.legacy_fallback_count = 0
+        self.decision_divergences = 0
+        
         # Initialize log file
         logs_dir = "logs"
         if not os.path.exists(logs_dir):
@@ -148,6 +174,7 @@ class DCSSBot:
         self.log_file = os.path.join(logs_dir, f"bot_session_{timestamp}.log")
         
         # Configure file logging with loguru
+
         logger.add(self.log_file, level="DEBUG", format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}")
         
         # Initialize debug screens directory
@@ -702,7 +729,7 @@ class DCSSBot:
             max_steps: Maximum number of actions to take
         """
         self.max_steps = max_steps  # Store for display in TUI
-        if not self.ssh_client.connect():
+        if not self.local_client.connect():
             logger.error("Failed to connect to server")
             return
 
@@ -716,7 +743,7 @@ class DCSSBot:
         logger.info("Handling startup menus...")
         if not self._local_startup():
             logger.error("Failed to complete startup sequence")
-            self.ssh_client.disconnect()
+            self.local_client.disconnect()
             return
         logger.info("Startup complete, game started")
         
@@ -732,7 +759,7 @@ class DCSSBot:
             # Debug: Read and display initial game state
             logger.info("Reading initial game state...")
             for debug_i in range(3):
-                initial_output = self.ssh_client.read_output(timeout=1.0)
+                initial_output = self.local_client.read_output(timeout=1.0)
                 if initial_output:
                     self.last_screen = initial_output
                     logger.info(f"Got initial output on attempt {debug_i+1}: {len(initial_output)} bytes")
@@ -758,8 +785,10 @@ class DCSSBot:
             
             while self.move_count < max_steps:
                 # Read current state - wait for screen to stabilize before analyzing
+                # During gameplay, server typically responds within 1-2 seconds
+                # Using shorter timeout (1.5s) to reduce lag while still ensuring stability
                 logger.debug(f"Move {self.move_count}: Reading stable output...")
-                output = self.ssh_client.read_output_stable(timeout=3.5, stability_threshold=0.3)
+                output = self.local_client.read_output_stable(timeout=1.5, stability_threshold=0.3)
                 
                 if output:
                     logger.info(f"Move {self.move_count}: Got stable screen with {len(output)} bytes")
@@ -800,7 +829,7 @@ class DCSSBot:
                     if action:
                         logger.info(f"Move {self.move_count + 1}: Sending '{action}' ({self.action_reason})")
                         self.last_action_sent = action  # Track the action we're sending
-                        self.ssh_client.send_command(action)
+                        self.local_client.send_command(action)
                         self.move_count += 1
                         
                         # Wait for server to process the command (local needs more time)
@@ -808,8 +837,7 @@ class DCSSBot:
                         time.sleep(0.25)
                         
                         # Read the response - wait for stable output
-                        # Local subprocess needs more time than SSH
-                        response = self.ssh_client.read_output_stable(timeout=3.5, stability_threshold=0.3)
+                        response = self.local_client.read_output_stable(timeout=3.5, stability_threshold=0.3)
                         if response:
                             consecutive_no_output = 0  # Reset idle counter when we get any output
                             
@@ -858,7 +886,7 @@ class DCSSBot:
                         # Log action to activity panel
                         self._log_activity(f"Move {self.move_count}: Waiting (no action decided)", "debug")
                         
-                        self.ssh_client.send_command('.')
+                        self.local_client.send_command('.')
                         self.move_count += 1
                         
                         # Wait for server to process (at least 2 seconds)
@@ -866,8 +894,7 @@ class DCSSBot:
                         time.sleep(3.0)
                         
                         # Read the response with longer timeout
-                        # Local subprocess needs more time than SSH
-                        response = self.ssh_client.read_output(timeout=3.0)
+                        response = self.local_client.read_output(timeout=3.0)
                         if response:
                             # Clean both screens for comparison
                             prev_clean = self._clean_ansi(self.last_screen) if self.last_screen else ""
@@ -948,7 +975,396 @@ class DCSSBot:
         finally:
             # Reset terminal to normal state before disconnecting
             self._reset_terminal()
-            self.ssh_client.disconnect()
+            self.local_client.disconnect()
+
+    def _detect_items_on_ground(self, output: str) -> bool:
+        """
+        Detect if there are items on the ground that can be picked up.
+        
+        Important: We skip items that are not useful:
+        - Corpses (carrion) - not useful for combat
+        - Missiles (arrows, stones) - not our priority
+        
+        When using auto-explore (o command), items are automatically picked up.
+        Therefore, we should avoid repeatedly trying to grab items if:
+        1. We just tried to grab and found nothing ("Nothing to pick up" or "There are no items here")
+        2. We're currently in auto-explore mode
+        3. Items are corpses/carrion only
+        
+        Only attempt grab if:
+        - Enough moves have passed since last failed grab attempt (5+ moves)
+        - Message indicates useful items on ground (excluding corpses/missiles)
+        - We don't see "There are no items here" which indicates nothing is actually present
+        
+        Args:
+            output: Current game output
+            
+        Returns:
+            True if useful items are on the ground and we should attempt grab, False otherwise
+        """
+        if not output:
+            return False
+        
+        clean_output = self._clean_ansi(output) if output else ""
+        
+        # Check if game says "There are no items here" or "Nothing to pick up"
+        # These indicate the grab attempt just failed (or there was nothing on the ground)
+        if 'there are no items here' in clean_output.lower() or 'nothing to pick up' in clean_output.lower():
+            self.last_grab_attempt = self.move_count
+            self.last_grab_failed = True
+            logger.debug("Nothing on ground or grab failed - auto-explore likely already picked up items")
+            return False
+        
+        # Check if we recently tried to grab and found nothing
+        # If so, don't try again immediately - wait 5+ moves before retrying
+        if self.last_grab_failed and (self.move_count < self.last_grab_attempt + 5):
+            logger.debug(f"Skipping grab attempt (last grab failed {self.move_count - self.last_grab_attempt} moves ago)")
+            return False
+        
+        # Reset failed flag if we haven't tried to grab in a while (5+ moves)
+        if self.last_grab_failed and self.move_count >= self.last_grab_attempt + 5:
+            self.last_grab_failed = False
+        
+        # Check for common item messages indicating items on ground
+        # Use message log area from TUI parser for more reliable detection
+        screen_text = self.screen_buffer.get_screen_text() if self.last_screen else ""
+        if screen_text:
+            try:
+                tui_parser = DCSSLayoutParser()
+                tui_areas = tui_parser.parse_layout(screen_text)
+                message_log_area = tui_areas.get('message_log', None)
+                if message_log_area:
+                    message_content = message_log_area.get_text()
+                    
+                    # If we see "there are no items here", no point trying to grab
+                    if 'there are no items here' in message_content.lower():
+                        self.last_grab_failed = True
+                        self.last_grab_attempt = self.move_count
+                        return False
+                    
+                    # Check for "You see here" messages
+                    if 'you see here' in message_content.lower():
+                        # But filter out corpses and unwanted items
+                        # Check if the item is a corpse (carrion) - skip these
+                        if 'corpse' in message_content.lower():
+                            logger.debug("Skipping corpse on ground (not useful)")
+                            return False
+                        
+                        # Filter out missiles (arrows, stones, etc)
+                        missile_keywords = ['stone', 'arrow', 'bolt', 'dart', 'javelin', 'sling bullet']
+                        if any(keyword in message_content.lower() for keyword in missile_keywords):
+                            logger.debug("Skipping missiles on ground (not our priority)")
+                            return False
+                        
+                        # Only return True for useful items
+                        return True
+            except Exception as e:
+                logger.debug(f"Error parsing TUI for items: {e}")
+        
+        # Fallback: check common item keywords
+        # Skip corpses and missiles in fallback
+        has_corpse = 'corpse' in clean_output.lower()
+        has_missile = any(word in clean_output.lower() for word in ['stone', 'arrow', 'bolt', 'dart', 'javelin', 'sling bullet'])
+        
+        if has_corpse or has_missile:
+            logger.debug("Skipping corpse or missiles detected in output")
+            return False
+        
+        # Only trigger on specific indicators
+        has_item_indicator = 'you see here' in clean_output.lower()
+        
+        return has_item_indicator
+    
+    def _grab_items(self) -> Optional[str]:
+        """
+        Send grab command to pick up items from the ground.
+        
+        Note: When in auto-explore mode (o command), the game automatically picks up items.
+        Therefore, if grab fails with "Nothing to pick up", we wait before retrying
+        to avoid spamming 'g' commands when auto-explore has already handled item pickup.
+        
+        Returns:
+            Action command to send (usually 'g' for grab)
+        """
+        # Mark this grab attempt
+        self.last_grab_attempt = self.move_count
+        self.last_grab_failed = False  # Reset - we're about to try
+        
+        logger.info("📦 Grabbing items from the ground")
+        return self._return_action('g', "Grabbing items from the ground")
+    
+    def _is_item_pickup_menu(self, output: str) -> bool:
+        """
+        Detect if we're in the item selection menu that appears after pressing 'g'.
+        
+        The menu shows "Pick up what? X/Y slots" and lists items by category:
+        - Hand Weapons (e.g., "+0 dagger")
+        - Missiles (e.g., "5 stones")  
+        - Armour (e.g., "leather armour")
+        - Carrion (corpses - should skip)
+        - etc.
+        
+        The menu format has item letters (a, b, c, etc) that can be toggled.
+        
+        Args:
+            output: Current game output
+            
+        Returns:
+            True if in item pickup menu, False otherwise
+        """
+        if not output:
+            return False
+        
+        clean_output = self._clean_ansi(output) if output else ""
+        
+        # Check for the distinctive "Pick up what?" prompt
+        return 'pick up what?' in clean_output.lower()
+    
+    def _handle_item_pickup_menu(self, output: str) -> Optional[str]:
+        """
+        Handle the item selection menu that appears after pressing 'g'.
+        
+        Strategy: We want to skip items that are not useful:
+        - Carrion (corpses) - completely skip
+        - Missiles (arrows, stones) - not useful for fighter  
+        - +0 weapons - we have an axe already
+        - Armor with no AC benefit - skip
+        
+        Since parsing the exact armor AC benefits is complex, we'll use a simple strategy:
+        Close the menu with Escape and let auto-explore handle items naturally.
+        This prevents us from getting stuck in the menu.
+        
+        Args:
+            output: Current game output (should be item pickup menu)
+            
+        Returns:
+            Action command to handle the menu
+        """
+        clean_output = self._clean_ansi(output) if output else ""
+        
+        # Check what categories of items are available
+        has_carrion = 'carrion' in clean_output.lower()
+        has_missiles = 'missiles' in clean_output.lower()
+        has_hand_weapons = 'hand weapons' in clean_output.lower()
+        has_armor = 'armour' in clean_output.lower() or 'armor' in clean_output.lower()
+        
+        logger.debug(f"Item menu: Carrion={has_carrion}, Missiles={has_missiles}, Weapons={has_hand_weapons}, Armor={has_armor}")
+        
+        # Parse the lines to see what items are available
+        lines = clean_output.split('\n')
+        has_useful_items = False
+        
+        for line in lines:
+            line_lower = line.lower()
+            
+            # Skip carrion - completely useless
+            if 'kobold corpse' in line_lower or 'orc corpse' in line_lower or 'corpse' in line_lower and 'carrion' in clean_output:
+                continue
+            
+            # Skip missiles (arrows, stones, etc)
+            if 'stones' in line_lower or 'arrow' in line_lower or 'bolt' in line_lower:
+                continue
+            
+            # Skip +0 weapons (we have an axe already that's as good)
+            if '+0' in line_lower and ('dagger' in line_lower or 'sword' in line_lower or 'axe' in line_lower or 'spear' in line_lower):
+                continue
+            
+            # TODO: Could add +1 or +2 weapon detection, but for now skip all non-trivial evaluations
+            
+        # Since we don't have a good way to evaluate items without deeper parsing,
+        # and the items shown are all ones we don't want (corpses, missiles, +0 weapons),
+        # close the menu with Escape
+        logger.info("📋 Item pickup menu has no useful items - closing with Escape")
+        self.in_item_pickup_menu = False
+        return self._return_action('\x1b', "Closing item menu (no useful items)")
+    
+    def _identify_untested_potions(self) -> Optional[str]:
+        """
+        Check if we have untested potions and quaff one to identify it.
+        
+        When we encounter a potion with unknown effect, we quaff it to discover the effect.
+        This creates a mapping: color -> effect for the current game session.
+        
+        Returns:
+            Action command to quaff a potion, or None if no untested potions
+        """
+        # Check if we have any untested potions
+        untested = self.parser.state.untested_potions
+        
+        if not untested:
+            return None
+        
+        # Pick the first untested potion
+        slot = next(iter(untested))
+        color = untested[slot]
+        
+        logger.info(f"🔮 Found untested {color} potion in slot '{slot}' - quaffing to identify...")
+        self._log_activity(f"Quaffing {color} potion (slot {slot}) to identify effect", "info")
+        
+        # Send quaff command: 'q' + slot letter
+        # We need to send this as two separate commands
+        self.quaff_slot = slot  # Store for next step
+        return self._return_action('q', f"Quaffing {color} potion to identify (slot {slot})")
+    
+    def _refresh_inventory(self) -> Optional[str]:
+        """
+        Send command to view inventory ('i' command) and parse the result on next turn.
+        
+        Returns:
+            Action command to open inventory
+        """
+        # Mark that we're about to enter inventory screen so we can detect it on next turn
+        self.in_inventory_screen = True
+        self.last_inventory_refresh = self.move_count
+        logger.info("📋 Opening inventory screen")
+        # Open inventory with 'i' command
+        # The inventory screen will be parsed on the next iteration
+        return self._return_action('i', "Refreshing inventory display")
+    
+    def _check_and_handle_inventory_state(self, output: str) -> Optional[str]:
+        """
+        Check if we're currently in the inventory screen and need to handle input.
+        
+        When 'i' command is sent, DCSS shows the inventory screen.
+        We need to parse it and then exit the screen.
+        
+        The inventory screen has:
+        - Lines with format like "a - item name" or "a) item name"
+        - Usually starts with letter(s) and dash/parenthesis
+        - May have inventory header showing slots (e.g., "Inventory: 6/52 slots")
+        
+        Args:
+            output: Current game output
+            
+        Returns:
+            Action to take (usually Escape to exit inventory), or None
+        """
+        clean_output = self._clean_ansi(output) if output else ""
+        
+        # Check for multiple inventory indicators
+        # 1. Look for inventory entries (letter, space/paren, item name)
+        inventory_pattern = r'^[a-z]\s*[-\)]\s+'
+        in_inventory = any(re.match(inventory_pattern, line.strip()) for line in clean_output.split('\n'))
+        
+        # 2. Alternative: Look for distinctive inventory header lines like "Inventory: X/Y slots"
+        if not in_inventory:
+            in_inventory = 'inventory:' in clean_output.lower() and ('slots' in clean_output.lower() or '/' in clean_output)
+        
+        # 3. If we were expecting inventory and got item entries, that's inventory
+        if not in_inventory and self.in_inventory_screen:
+            # We sent 'i' command but don't see clear inventory markers
+            # Check if screen shows items (this could be inventory or game screen with items visible)
+            # Look for consistent item patterns
+            lines = clean_output.split('\n')
+            item_lines = [line for line in lines if re.match(inventory_pattern, line.strip())]
+            if len(item_lines) >= 2:  # At least 2 items visible suggests inventory screen
+                in_inventory = True
+                logger.debug(f"Detected inventory screen by item count ({len(item_lines)} items)")
+        
+        if in_inventory:
+            logger.debug("Currently in inventory screen")
+            # Mark that we're now in inventory screen if we weren't before
+            # This catches cases where inventory appears unexpectedly
+            if not self.in_inventory_screen:
+                logger.info("⚠️ Detected inventory screen without prior 'i' command - handling anyway")
+                self.in_inventory_screen = True
+            
+            # Parse the inventory
+            self.parser.parse_inventory_screen(output)
+            logger.info(f"📦 Parsed inventory: {len(self.parser.state.inventory_items)} items")
+            
+            # Log current inventory
+            for slot, item in self.parser.state.inventory_items.items():
+                logger.debug(f"  {slot}: {item.name} (type={item.item_type}, identified={item.identified})")
+            
+            # Exit inventory screen with Escape
+            return self._return_action('\x1b', "Exiting inventory screen")
+        
+        return None
+    
+    def _parse_potion_effect_from_message(self, output: str) -> Optional[Tuple[str, str]]:
+        """
+        Parse the effect of a recently quaffed potion from message log.
+        
+        After quaffing an untested potion, DCSS displays messages about the effect:
+        "You feel invigorated." -> healing
+        "You glow briefly." -> resistance
+        etc.
+        
+        Args:
+            output: Game output containing messages
+            
+        Returns:
+            Tuple of (color, effect) if we can determine it, None otherwise
+        """
+        clean_output = self._clean_ansi(output) if output else ""
+        
+        # Common potion effect messages
+        potion_effects = {
+            'healing': ['you feel much better', 'you are healed', 'wounds are healed', 'recover'],
+            'cure poison': ['poison is cured', 'lose the poison', 'no longer poisoned'],
+            'might': ['you feel strong', 'you feel invigorated', 'feel mighty'],
+            'magic': ['glow briefly', 'feel more magical', 'magic improves'],
+            'agility': ['feel quick', 'feel nimble', 'faster'],
+            'resistance': ['feel resistant', 'protected from elements', 'more resilient'],
+            'levitation': ['you float', 'you ascend', 'lose your footing'],
+            'flight': ['you fly', 'grow wings', 'soar'],
+        }
+        
+        # Try to match effect from messages
+        for effect, keywords in potion_effects.items():
+            for keyword in keywords:
+                if keyword in clean_output.lower():
+                    # Get the color from our untested potions tracking
+                    # For now, just return the effect (color will be matched by caller)
+                    return ('unknown_color', effect)
+        
+        return None
+    
+    def _find_and_equip_better_armor(self) -> Optional[str]:
+        """
+        Detect better armor/clothing/rings and equip them to improve AC.
+        
+        Scans inventory for armor items with better AC than currently equipped.
+        Sends 'e' command to equip when found.
+        
+        Returns:
+            Action command to equip better armor, or None if no improvement found
+        """
+        # Find better armor
+        better_armor = self.parser.find_better_armor()
+        
+        if not better_armor:
+            return None
+        
+        slot, item = better_armor
+        
+        # Only equip if significant improvement or currently unequipped slot
+        if item.ac_value < -2:  # At least +2 protection
+            logger.info(f"🛡️ Found better armor: {item.name} (AC {item.ac_value}) in slot '{slot}'")
+            self.equip_slot = slot  # Store for next step
+            return self._return_action('e', f"Equipping better armor: {item.name}")
+        
+        return None
+    
+    def _mark_equipped_items(self, output: str) -> None:
+        """
+        Mark items as equipped based on inventory screen.
+        
+        In DCSS inventory screen, equipped items are usually marked with a '*' or similar.
+        This method detects and marks them.
+        
+        Args:
+            output: Inventory screen output
+        """
+        # Look for equipped item markers (format might be: "a*" or "[a]" or similar)
+        # For now, we'll look for items that appear in the status line
+        clean = self._clean_ansi(output) if output else ""
+        
+        # This is a placeholder - actual implementation would parse inventory screen
+        # to detect which items are marked as equipped
+        # For DCSS, we'd look at the inventory display to see marked items
+        pass
 
     def _reset_terminal(self) -> None:
         """Reset terminal to normal state (clear ANSI codes, reset colors, show cursor)."""
@@ -975,11 +1391,11 @@ class DCSSBot:
             
             # First, get character experience/progression info before quitting
             logger.info("Retrieving character experience info with 'E' command...")
-            self.ssh_client.send_command('E')
+            self.local_client.send_command('E')
             time.sleep(2.0)  # Wait for response
             
             # Read experience screen
-            exp_output = self.ssh_client.read_output(timeout=2.0)
+            exp_output = self.local_client.read_output(timeout=2.0)
             if exp_output:
                 self.last_screen = exp_output
                 logger.info("Character experience screen received")
@@ -1002,11 +1418,11 @@ class DCSSBot:
             
             # Now send Ctrl-Q to quit
             logger.info("Sending Ctrl-Q to quit game...")
-            self.ssh_client.send_command('\x11')  # Ctrl-Q
+            self.local_client.send_command('\x11')  # Ctrl-Q
             time.sleep(0.5)
             
             # Read confirmation prompt
-            output = self.ssh_client.read_output(timeout=2.0)
+            output = self.local_client.read_output(timeout=2.0)
             if output:
                 self.last_screen = output
                 clean = self._clean_ansi(output).lower()
@@ -1018,20 +1434,20 @@ class DCSSBot:
                     # Check if it's asking to type "quit"
                     if 'type quit' in clean or 'enter quit' in clean or 'type the word' in clean:
                         logger.info("Server asking to type 'quit' to confirm... sending 'quit'")
-                        self.ssh_client.send_command('quit')
+                        self.local_client.send_command('quit')
                         time.sleep(0.5)
-                        self.ssh_client.send_command('\r')  # Send enter/return
+                        self.local_client.send_command('\r')  # Send enter/return
                         time.sleep(1.0)
                     else:
                         # Generic confirmation prompt
                         logger.info("Confirming character abandon with 'y'...")
-                        self.ssh_client.send_command('y')
+                        self.local_client.send_command('y')
                         time.sleep(1.0)
                     
                     # Capture end-of-game screens
                     logger.info("Capturing end-of-game state screens...")
                     for screen_num in range(5):  # Try to capture up to 5 screens
-                        end_output = self.ssh_client.read_output(timeout=1.5)
+                        end_output = self.local_client.read_output(timeout=1.5)
                         if end_output:
                             self.last_screen = end_output
                             clean_end = self._clean_ansi(end_output).lower()
@@ -1052,15 +1468,15 @@ class DCSSBot:
                     logger.info("✓ Game exited gracefully")
                 else:
                     logger.info("No clear quit confirmation detected, sending 'quit' anyway...")
-                    self.ssh_client.send_command('quit')
+                    self.local_client.send_command('quit')
                     time.sleep(0.5)
-                    self.ssh_client.send_command('\r')  # Send enter
+                    self.local_client.send_command('\r')  # Send enter
                     time.sleep(1.0)
             else:
                 logger.warning("No response to Ctrl-Q, attempting to send 'quit' anyway")
-                self.ssh_client.send_command('quit')
+                self.local_client.send_command('quit')
                 time.sleep(0.5)
-                self.ssh_client.send_command('\r')
+                self.local_client.send_command('\r')
                 time.sleep(1.0)
                 
         except Exception as e:
@@ -1081,331 +1497,116 @@ class DCSSBot:
         """
         self.action_reason = reason
         return action
+    
+    def _prepare_decision_context(self, output: str) -> DecisionContext:
+        """
+        Prepare game state context for DecisionEngine evaluation.
+        
+        This method extracts all relevant game state into a DecisionContext object
+        that the DecisionEngine uses to make decisions via rule evaluation.
+        
+        Args:
+            output: Current screen text (from pyte buffer via get_screen_text())
+            
+        Returns:
+            DecisionContext with all current game state
+        """
+        # Parse output to extract state
+        self.parser.parse_output(output)
+        
+        # Get current values from parser
+        health = self.parser.state.health
+        max_health = self.parser.state.max_health
+        level = self.parser.state.experience_level
+        dungeon_level = self.parser.state.dungeon_level
+        
+        # Detect game situations (using existing helper methods)
+        enemy_detected, enemy_name = self._detect_enemy_in_range(output)
+        items_on_ground = self._detect_items_on_ground(output)
+        in_shop = self._is_in_shop(output)
+        in_inventory_screen = self._check_and_handle_inventory_state(output) is not None
+        in_item_pickup_menu = self._is_item_pickup_menu(output)
+        in_menu = self.state_tracker.in_menu_state()
+        
+        # Check for various prompts
+        has_more_prompt = '--more--' in output
+        attribute_increase_prompt = ('Increase (S)trength' in output or 
+                                     'Increase (S)trength, (I)ntelligence, or (D)exterity' in output)
+        save_game_prompt = 'save game and return to main menu' in output.lower()
+        has_level_up = self.parser.has_level_up_message(output)
+        
+        # Check gameplay indicators
+        has_gameplay_indicators = (health > 0 or self.last_known_health > 0) and level > 0
+        
+        # Create and return context
+        return DecisionContext(
+            output=output,
+            health=health,
+            max_health=max_health,
+            level=level,
+            dungeon_level=dungeon_level,
+            enemy_detected=enemy_detected,
+            enemy_name=enemy_name,
+            items_on_ground=items_on_ground,
+            in_shop=in_shop,
+            in_inventory_screen=in_inventory_screen,
+            in_item_pickup_menu=in_item_pickup_menu,
+            in_menu=in_menu,
+            equip_slot_pending=self.equip_slot is not None,
+            quaff_slot_pending=self.quaff_slot is not None,
+            has_level_up=has_level_up,
+            has_more_prompt=has_more_prompt,
+            attribute_increase_prompt=attribute_increase_prompt,
+            save_game_prompt=save_game_prompt,
+            last_action_sent=self.last_action_sent,
+            last_level_up_processed=self.last_level_up_processed,
+            last_attribute_increase_level=self.last_attribute_increase_level,
+            last_equipment_check=self.last_equipment_check,
+            last_inventory_refresh=self.last_inventory_refresh,
+            move_count=self.move_count,
+            has_gameplay_indicators=has_gameplay_indicators,
+            gameplay_started=self.gameplay_started,
+            goto_state=self.goto_state,
+            goto_target_level=self.goto_target_level
+        )
+        return action
 
     def _decide_action(self, output: str) -> Optional[str]:
         """
-        Decide what action to take based on game state.
+        Decide what action to take based on game state using DecisionEngine.
         
-        CRITICAL: The output parameter should be the reconstructed screen text from pyte buffer
-        (via screen_buffer.get_screen_text()), NOT raw PTY output. Raw PTY output contains only
-        ANSI code deltas, not complete text needed for game state analysis.
-        
-        Uses the state machine to properly handle prompts and game phases.
-        
-        Strategy:
-        1. Default: Auto-explore (o command)
-        2. If enemy in range: Auto-engage with Tab
-        3. If health < max and not in combat: Wait (.) each move until healed
+        Evaluates all configured rules in priority order and returns the first matching
+        rule's action.
         
         Args:
-            output: Current game output (must be complete screen text from pyte buffer, not raw PTY)
+            output: Current game state from screen buffer
             
         Returns:
-            Command to send to the game
+            Command string to send to game, or None if no rules match
         """
-        # Update state tracker
-        state = self.state_tracker.update(output)
-        logger.debug(f"State: {state}")
-        
-        # CHECK FOR ATTRIBUTE INCREASE PROMPT - LEVEL UP REWARD (CHECK FIRST)
-        # When leveling up, player SOMETIMES gets to choose which stat to increase (Strength, Intelligence, Dexterity)
-        # This is optional and not guaranteed - DCSS only shows this prompt sometimes
-        # If it appears, respond ONCE per level (tracked by last_attribute_increase_level)
-        # IMPORTANT: The prompt text persists in message history, so we also check for "You feel stronger" 
-        # to confirm the prompt was already handled (indicates player already chose an attribute)
-        clean_output = self._clean_ansi(output) if output else ""
-        
-        # If we see "You feel stronger" message, the attribute increase already happened - don't send another 'S'
-        # Use TUI parser to check message log section
-        screen_text = self.screen_buffer.get_screen_text() if self.last_screen else ""
-        if screen_text:
-            tui_parser = DCSSLayoutParser()
-            tui_areas = tui_parser.parse_layout(screen_text)
-            message_log_area = tui_areas.get('message_log', None)
-            if message_log_area:
-                message_content = message_log_area.get_text()
-                if 'you feel stronger' in message_content.lower():
-                    logger.debug("💪 Attribute increase already processed (detected 'You feel stronger' message)")
-                    # Continue to other checks - don't respond with 'S' again
-                elif 'Increase (S)trength' in message_content or 'Increase (S)trength, (I)ntelligence, or (D)exterity' in message_content:
-                    # Extract current level to check if this is a NEW attribute increase prompt
-                    current_level = self.parser.state.experience_level
-                    # Only respond if this is a NEW level (we haven't processed attribute increase for this level yet)
-                    if current_level and current_level > self.last_attribute_increase_level:
-                        self.last_attribute_increase_level = current_level
-                        logger.info("💪 Attribute increase prompt detected - choosing Strength (S)")
-                        return self._return_action('S', "Level-up: Increasing Strength")
-                    # Otherwise, skip this prompt (already handled for this level)
-        
-        # CHECK FOR SAVE GAME PROMPT - REJECT TO CONTINUE PLAYING
-        # If somehow we triggered "Save game and return to main menu?" (e.g., sent extra 'S'), 
-        # respond with 'N' to stay in game and continue playing
-        # Use TUI parser to check message log section
-        if screen_text:
-            tui_parser = DCSSLayoutParser()
-            tui_areas = tui_parser.parse_layout(screen_text)
-            message_log_area = tui_areas.get('message_log', None)
-            if message_log_area:
-                message_content = message_log_area.get_text()
-                if 'save game and return to main menu' in message_content.lower() and '[y]es or [n]o' in message_content.lower():
-                    logger.warning("⚠️ Save game prompt detected (likely from extra input) - responding with 'N' to stay in game")
-                    return self._return_action('n', "Rejecting save prompt - continuing gameplay")
-        
-        # CHECK FOR LEVEL-UP MESSAGE - PRIORITY
-        # When character gains a level, log the event and continue
-        # Note: Stat increase prompt is OPTIONAL - DCSS doesn't always show it
-        if self.parser.has_level_up_message(output):
-            new_level = self.parser.extract_level_from_message(output)
-            # Only process if this is a NEW level (avoid re-detecting same message on next turn)
-            if new_level and new_level > self.last_level_up_processed:
-                self.last_level_up_processed = new_level
-                logger.info(f"🎉 LEVEL UP! Character reached Level {new_level}")
-                # Check if there's a --more-- prompt to dismiss
-                if '--more--' in output:
-                    logger.info("Level-up message has --more-- prompt, dismissing...")
-                    return self._return_action(' ', "Dismissing level-up --more-- prompt")  # Press space to dismiss the message
-                else:
-                    # Don't wait - continue gameplay. Stat increase prompt will be handled if it appears
-                    logger.info("Level-up processed. Continuing gameplay (stat increase is optional)...")
-                    return self._return_action('.', "Level-up processed")
-        
-        # CHECK FOR --MORE-- PROMPTS - DISMISS ONLY THIS SPECIFIC PROMPT
-        # The game shows "--more--" when message buffer is full and needs clearing before showing additional information.
-        # This is the ONLY automatic game prompt that should be dismissed without further context.
-        # Generic prompt dismissal (for help text containing "press", etc) is NOT done here - only specific --more-- prompts.
-        if '--more--' in output:
-            logger.info("📄 More information prompt detected, pressing space to continue...")
-            return self._return_action(' ', "Dismissing --more-- prompt")  # Press space to continue through any --more-- prompt
-        
-        # CHECK FOR "DONE EXPLORING" - DESCEND TO NEXT LEVEL USING GOTO
-        # When auto-explore completes, use 'G' command to goto next dungeon level
-        # Three-step process: 1) Send 'G' -> 2) Send 'D' for Dungeon -> 3) Send level number
-        # NOTE: These messages appear in the message log section of the TUI, so we check there specifically
-        if self.goto_state is None:
-            # Use TUI parser to extract the message log section (more reliable than scanning entire output)
-            screen_text = self.screen_buffer.get_screen_text() if self.last_screen else ""
-            if screen_text:
-                tui_parser = DCSSLayoutParser()
-                tui_areas = tui_parser.parse_layout(screen_text)
-                message_log_area = tui_areas.get('message_log', None)
-                message_content = message_log_area.get_text() if message_log_area else ""
-                
-                # Check message log for exploration completion indicators
-                if 'Done exploring' in message_content or 'Partly explored' in message_content:
-                    if 'Done exploring' in message_content:
-                        logger.info("📍 Done exploring current level! Preparing to descend to next level...")
-                        reason = "Done exploring"
-                    else:
-                        logger.info("📍 Auto-explore stuck (unreachable items/areas detected). Descending to next level...")
-                        reason = "Partly explored (moving on)"
-                    self._log_event('exploration', 'Level exploration complete or stuck - descending')
-                    # Set up for goto command
-                    current_level = self.parser.state.dungeon_level
-                    self.goto_target_level = current_level + 1
-                    self.goto_state = 'awaiting_location_type'
-                    logger.info(f"Sending 'G' (goto) command to descend from level {current_level} to {self.goto_target_level}")
-                    return self._return_action('G', f"Descend to level {self.goto_target_level} ({reason})")
-        
-        # STEP 2: After 'G', the game prompts for location type (like "(D)ungeon/(B)ranch")
-        # Send 'D' to select Dungeon
-        if self.goto_state == 'awaiting_location_type':
-            logger.info("Goto command sent, game asking for location type. Responding with 'D' for Dungeon...")
-            self.goto_state = 'awaiting_level_number'
-            return self._return_action('D', "Selecting Dungeon from goto location menu")
-        
-        # STEP 3: After 'D', the game prompts for the level number
-        # Send the target level number
-        if self.goto_state == 'awaiting_level_number':
-            logger.info(f"Goto location selected, game asking for level number. Responding with {self.goto_target_level}...")
-            self.goto_state = None  # Reset goto state
-            target_level_str = str(self.goto_target_level)
-            return self._return_action(target_level_str, f"Descending to dungeon level {self.goto_target_level}")
-        
-        # If in menu, let the menu handler deal with it
-        if self.state_tracker.in_menu_state():
-            logger.info(f"📋 Menu detected - State: {state}, Waiting...")
-            return self._return_action('.', "Waiting in menu")  # Wait in menu
-        
-        # CRITICAL: Check if screen shows gameplay indicators (Health, Time, XL, etc)
-        # Even if state_tracker hasn't transitioned to GAMEPLAY yet
-        # Use TUI parser to extract stats from character panel (more reliable)
-        has_health = False
-        has_xl = False
-        has_combat_action = False
-        
-        screen_text_check = self.screen_buffer.get_screen_text() if self.last_screen else ""
-        if screen_text_check:
-            tui_parser_check = DCSSLayoutParser()
-            tui_areas_check = tui_parser_check.parse_layout(screen_text_check)
+        try:
+            # Prepare complete game state context for engine
+            context = self._prepare_decision_context(output)
             
-            # Check character panel for health and XL stats
-            char_panel_area = tui_areas_check.get('character_panel', None)
-            if char_panel_area:
-                char_panel_text = char_panel_area.get_text()
-                has_health = 'Health:' in char_panel_text
-                has_xl = 'XL:' in char_panel_text
+            # Evaluate engine rules (highest priority first)
+            command, reason = self.decision_engine.decide(context)
             
-            # Also check message log for combat/action messages that indicate active gameplay
-            message_log_area = tui_areas_check.get('message_log', None)
-            if message_log_area:
-                message_content = message_log_area.get_text()
-                has_combat_action = any(indicator in message_content for indicator in [
-                    'You encounter', 'You see',  # Enemy encountered
-                    'block', 'miss', 'hits', 'damage',  # Combat happening
-                    'opens the door', 'You open',  # Movement
-                    'rat', 'bat', 'spider', 'goblin',  # Specific creatures
-                ])
-        
-        has_gameplay_indicators = has_health or has_xl or has_combat_action
-        
-        # Also check if state machine detected gameplay via HUD indicators
-        state_machine_detected_gameplay = self.char_creation_state.in_gameplay
-        
-        logger.debug(f"Gameplay check: Health:{has_health}, XL:{has_xl}, Combat:{has_combat_action}, StateMachine:{state_machine_detected_gameplay}")
-        
-        if has_gameplay_indicators or state_machine_detected_gameplay:
-            logger.debug(f"Gameplay indicators detected (indicators={has_gameplay_indicators}, state_machine={state_machine_detected_gameplay}), proceeding with gameplay logic")
-            self.gameplay_started = True  # Mark that we're in active gameplay
-            # Continue to health/action logic below, skip state check
-        elif self.gameplay_started:
-            # We've already started gameplay, keep playing even if indicators aren't clear
-            logger.debug(f"In active gameplay (started=True), proceeding with actions")
-            # Continue to health/action logic below
-        else:
-            # Haven't reached gameplay yet - no indicators and not started
-            logger.debug(f"Not in gameplay yet ({state}), auto-exploring until gameplay indicators appear")
-            return self._return_action('o', "Auto-explore (waiting for gameplay to start)")
-        
-        # If we have output but no Time display, still try to play
-        # (Some game states might not show Time display immediately)
-        if not output:
-            logger.debug("No output received, auto-exploring")
-            return self._return_action('o', "No output - auto-exploring")
-        
-        # Parse the output to extract game state (health, etc)
-        self.parser.parse_output(output)
-        
-        # Check if game is ready for input (has Time display)
-        is_ready = self.parser.is_game_ready(output)
-        logger.debug(f"Game ready status: {is_ready}")
-        
-        # Strategy Implementation:
-        # 1. Check if enemy is in range FIRST (combat takes priority over everything)
-        #    Do this BEFORE checking game_ready, since combat might not have Time display
-        enemy_detected, enemy_name = self._detect_enemy_in_range(output)
-        if enemy_detected:
-            # Get current health percentage
-            health = self.parser.state.health
-            max_health = self.parser.state.max_health
+            if command is not None:
+                self.engine_decisions_made += 1
+                return self._return_action(command, reason)
             
-            # Determine if we should use autofight or movement-based attacks
-            if max_health > 0:
-                health_percentage = (health / max_health) * 100
-            else:
-                health_percentage = 100
+            # Engine returned None - this should not happen with default engine
+            # but provide a safe fallback
+            logger.warning("No decision rule matched - returning explore")
+            self.engine_decisions_made += 1
+            return self._return_action('o', "Auto-explore (no rule matched)")
             
-            # If health is 70% or below, use movement-based attacks instead of autofight
-            # Autofight becomes unreliable when health is too low
-            if health_percentage <= 70:
-                logger.info(f"💔 Health at {health_percentage:.1f}% (≤70%) - Using manual movement attacks instead of autofight")
-                direction = self._find_direction_to_enemy(output)
-                return self._return_action(direction, f"Combat: Moving toward {enemy_name} (low health: {health_percentage:.1f}%)")
-            
-            # Check if we're too injured to fight recklessly (added safety check)
-            # Use TUI parser to check message log section
-            screen_text_injured = self.screen_buffer.get_screen_text() if self.last_screen else ""
-            if screen_text_injured:
-                tui_parser_injured = DCSSLayoutParser()
-                tui_areas_injured = tui_parser_injured.parse_layout(screen_text_injured)
-                message_log_area_injured = tui_areas_injured.get('message_log', None)
-                if message_log_area_injured:
-                    message_content_injured = message_log_area_injured.get_text()
-                    if 'too injured to fight recklessly' in message_content_injured.lower():
-                        logger.info("💔 Too injured to use autofight! Moving toward enemy instead...")
-                        direction = self._find_direction_to_enemy(output)
-                        return self._return_action(direction, "Combat: Too injured for autofight")
-            
-            logger.info(f"Enemy detected: {enemy_name} at {health_percentage:.1f}% health! Using autofight (Tab)")
-            self.consecutive_rest_actions = 0  # Reset rest counter on combat
-            
-            # Check if autofight failed on a previous turn with "No reachable target in view!"
-            # This means the enemy is visible but not in melee range - use movement instead
-            # Use TUI parser to check message log section
-            screen_text_reach = self.screen_buffer.get_screen_text() if self.last_screen else ""
-            if screen_text_reach:
-                tui_parser_reach = DCSSLayoutParser()
-                tui_areas_reach = tui_parser_reach.parse_layout(screen_text_reach)
-                message_log_area_reach = tui_areas_reach.get('message_log', None)
-                if message_log_area_reach:
-                    message_content_reach = message_log_area_reach.get_text()
-                    if 'no reachable target in view' in message_content_reach.lower() and self.last_action_sent == '\t':
-                        logger.info(f"⚔️ Autofight failed (no reachable target) - enemy {enemy_name} out of melee range. Using movement instead...")
-                        direction = self._find_direction_to_enemy(output)
-                        return self._return_action(direction, f"Combat: Moving to reach {enemy_name} (autofight unreachable)")
-            
-            return self._return_action('\t', f"Autofight - {enemy_name} in range")  # Tab = autofight
-        
-        # Even without Time display, if we have gameplay indicators proceed
-        if not is_ready:
-            logger.debug("Game ready status unclear, but proceeding with gameplay")
-            # If we just sent Tab (autofight), don't send auto-explore yet - wait a turn
-            if self.last_action_sent == '\t':
-                logger.info("Waiting after autofight instead of auto-explore")
-                return self._return_action('.', "Waiting after autofight")
-            
-            # Try to proceed with exploration
-            logger.info("Using auto-explore")
-            self.consecutive_rest_actions = 0
-            return self._return_action('o', "Auto-explore")
-        
-        # 2. Check health status and decide between resting and exploring
-        health = self.parser.state.health
-        max_health = self.parser.state.max_health
-        
-        logger.debug(f"⚕️ Health check: {health}/{max_health}, consecutive_rests: {self.consecutive_rest_actions}/{self.max_consecutive_rests}")
-        
-        # Cache the last valid health reading for when updates don't include status line
-        if max_health > 0:
-            self.last_known_max_health = max_health
-            self.last_known_health = health
-            logger.debug(f"Updated health cache: {health}/{max_health}")
-        elif self.last_known_max_health > 0:
-            # Use cached health if we can't read current health but have cached values
-            health = self.last_known_health
-            max_health = self.last_known_max_health
-            logger.debug(f"Using cached health: {health}/{max_health}")
-        
-        # If health cannot be read (0/0), request a screen redraw to get status info
-        if health == 0 and max_health == 0:
-            logger.warning("⚠️ Health display not readable (0/0). Requesting screen redraw...")
-            return '\x12'  # Ctrl-R = redraw screen
-        
-        # Check if health is at least 60% of max health
-        if max_health > 0:
-            health_percentage = (health / max_health) * 100
-            logger.debug(f"Health: {health_percentage:.1f}% ({health}/{max_health})")
-            
-            # If health is above 60%, auto-explore (but not right after autofight command)
-            if health_percentage >= 60:
-                # If we just sent Tab (autofight), don't immediately send auto-explore
-                # Wait one turn instead to let the game process autofight
-                if self.last_action_sent == '\t':
-                    logger.info(f"⏸️ Waiting after autofight (health: {health_percentage:.1f}%)")
-                    return self._return_action('.', f"Waiting after autofight")
-                
-                logger.info(f"🗺️ Auto-explore action (health: {health_percentage:.1f}%)")
-                self.consecutive_rest_actions = 0
-                return self._return_action('o', f"Auto-explore (health: {health_percentage:.1f}%)")
-            else:
-                # Health is below 90%, rest to recover
-                logger.info(f"😴 Resting to recover (health: {health_percentage:.1f}%)")
-                self.consecutive_rest_actions += 1
-                return self._return_action('5', f"Resting to recover (health: {health_percentage:.1f}%)")
-        
-        # If we can't determine max health, default to auto-explore
-        logger.warning(f"⚠️ Cannot determine max health, defaulting to auto-explore")
-        self.consecutive_rest_actions = 0
-        return self._return_action('o', "Auto-explore (health unknown)")
+        except Exception as e:
+            logger.error(f"Error in DecisionEngine: {e}")
+            logger.debug(f"Traceback: {e.__traceback__}")
+            # Safe fallback: explore
+            return self._return_action('o', "Auto-explore (engine error fallback)")
+    
     
     def _local_startup(self) -> bool:
         """
@@ -1434,7 +1635,7 @@ class DCSSBot:
             time.sleep(4.0)
             
             # Read initial menu
-            output = self.ssh_client.read_output(timeout=3.0)
+            output = self.local_client.read_output(timeout=3.0)
             if not output:
                 logger.error("No startup menu received!")
                 self._log_activity("No startup menu received!", "error")
@@ -1467,7 +1668,7 @@ class DCSSBot:
                 # On subsequent iterations, read new output
                 if attempt > 0:
                     logger.debug(f"Attempt {attempt + 1}: Reading output with 2.0s timeout...")
-                    output = self.ssh_client.read_output(timeout=2.0)
+                    output = self.local_client.read_output(timeout=2.0)
                     clean = self._clean_ansi(output) if output else ""
                     if output:
                         self.last_screen = output
@@ -1497,15 +1698,15 @@ class DCSSBot:
                         
                         # First, clear any pre-populated name from previous session using Ctrl+U (clear line)
                         # This deletes from cursor to start of line
-                        self.ssh_client.send_command('\x15')  # Ctrl+U
+                        self.local_client.send_command('\x15')  # Ctrl+U
                         time.sleep(0.1)
                         
                         # Send name as individual keypresses in cbreak mode
                         for char in name:
-                            self.ssh_client.send_command(char)
+                            self.local_client.send_command(char)
                             time.sleep(0.05)  # Small delay between characters
                         # Send Enter (\r\n for compatibility)
-                        self.ssh_client.send_command('\r\n')
+                        self.local_client.send_command('\r\n')
                         name_sent = True
                         logger.debug(f"Name sent: {name}, sleeping 1.5s for character creation menu to appear...")
                         time.sleep(1.5)
@@ -1554,7 +1755,7 @@ class DCSSBot:
                             self._log_activity(f"Selecting {current_state}: '{selection_key}' ({selection_name})", "info")
                             self._display_tui_to_user(f"🎮 {current_state} menu - selecting {selection_name} ({selection_key})")
                             # Send the selection key
-                            self.ssh_client.send_command(selection_key)
+                            self.local_client.send_command(selection_key)
                             last_menu_state = current_state
                             logger.debug(f"Sent '{selection_key}' command, sleeping 1.5s before reading next screen...")
                             time.sleep(1.5)
@@ -1572,7 +1773,7 @@ class DCSSBot:
             # Phase 2: If we reach here, we've exhausted attempts. Log final status
             logger.error("Failed to reach gameplay within startup sequence")
             self._log_activity("❌ Failed to reach gameplay", "error")
-            output = self.ssh_client.read_output(timeout=2.0)
+            output = self.local_client.read_output(timeout=2.0)
             
             if output and len(output) > 200:
                 clean = self._clean_ansi(output)
@@ -1696,13 +1897,15 @@ class DCSSBot:
                 # Reject if symbols are common English words (message artifacts, not creatures)
                 # e.g., "Found 19 sling" has symbols="Found" (a message), not creatures
                 # Also reject common item names that appear in pickup messages like "here 16x arrows"
-                invalid_symbols = ['Found', 'You', 'The', 'This', 'That', 'Your', 'And', 'Are', 'But', 'Can', 'For', 'Have', 'Here', 'Just', 'Know', 'Like', 'Make', 'More', 'Now', 'Only', 'Out', 'Over', 'Some', 'Such', 'Take', 'Want', 'Way', 'What', 'When', 'Will', 'With', 'Would', 'have', 'here']
+                # Also reject equipment status messages like "Nothing quivered"
+                invalid_symbols = ['Found', 'You', 'The', 'This', 'That', 'Your', 'And', 'Are', 'But', 'Can', 'For', 'Have', 'Here', 'Just', 'Know', 'Like', 'Make', 'More', 'Now', 'Only', 'Out', 'Over', 'Some', 'Such', 'Take', 'Want', 'Way', 'What', 'When', 'Will', 'With', 'Would', 'have', 'here', 'Nothing']
                 if symbols in invalid_symbols:
                     continue
                 
                 # Validate the entry
                 # Reject common items that might appear in "item found" messages
-                item_keywords = ['arrow', 'dart', 'potion', 'scroll', 'ring', 'amulet', 'wand', 'staff', 'weapon', 'armour', 'armor', 'item', 'stone', 'food', 'poisoned', 'cursed', 'blessed']
+                # Also reject common action keywords from equipment/message sections
+                item_keywords = ['arrow', 'dart', 'potion', 'scroll', 'ring', 'amulet', 'wand', 'staff', 'weapon', 'armour', 'armor', 'item', 'stone', 'food', 'poisoned', 'cursed', 'blessed', 'quivered']
                 if any(item in creature_name.lower() for item in item_keywords):
                     continue
                     
@@ -1799,9 +2002,46 @@ class DCSSBot:
         logger.debug("No enemies shown in TUI monsters section")
         return False, ""
 
+    def _is_in_shop(self, output: str) -> bool:
+        """
+        Detect if player is currently in a shop interface.
+        
+        Shop screens have characteristic patterns:
+        - "Welcome to [ShopName]'s [ShopType] Shop!" at the top
+        - Items listed with format: "a -  360 gold   an amulet..."
+        - Status line with "[Esc] exit" command at the bottom
+        
+        Args:
+            output: Current game output
+            
+        Returns:
+            True if in a shop interface, False otherwise
+        """
+        if not output:
+            return False
+        
+        clean = self._clean_ansi(output)
+        
+        # Check for characteristic shop patterns
+        # Primary check: "Welcome to" + "Shop!" is the most reliable indicator
+        has_welcome_line = 'Welcome to' in clean and "Shop!" in clean
+        
+        # Secondary check: "[Esc] exit" command (present in shop interface)
+        has_esc_exit = "[Esc] exit" in clean
+        
+        # If both patterns present, definitely in a shop
+        if has_welcome_line and has_esc_exit:
+            logger.info("🏪 Shop interface detected")
+            return True
+        
+        return False
+
     def _find_direction_to_enemy(self, output: str) -> str:
         """
-        Find the nearest visible enemy and return the direction to move toward it.
+        Find the direction to move toward the detected enemy.
+        
+        Uses TUI monsters section to get the enemy symbol, then scans the map to find it.
+        This ensures we move toward the correct enemy, not nearby UI elements.
         
         Uses roguelike direction keys:
         - h = left, j = down, k = up, l = right
@@ -1816,62 +2056,59 @@ class DCSSBot:
         if not output:
             return '.'
         
-        # Try to find map in current output first, fall back to last screen if not found
+        # Get the enemy from TUI monsters section (not by scanning for lowercase)
+        # This ensures we target the correct enemy, not UI artifacts
+        enemies_from_tui = self._extract_all_enemies_from_tui(output)
+        if not enemies_from_tui:
+            logger.debug("No enemies in TUI monsters section")
+            return '.'
+        
+        # We'll look for the enemy symbol on the map
+        # First, we need to get the creature symbol from somewhere
+        # The TUI monsters section shows "S   ball python", so we need to parse that
+        # Let's scan the output for the "X   name" pattern to get the symbol
+        
+        enemy_symbol = None
+        for line in output.split('\n'):
+            # Look for the monster entry format: "S   ball python"
+            # Match: single char + 3+ spaces + creature name
+            match = re.match(r'^([a-zA-Z])\s{3,}([\w\s]+)', line)
+            if match:
+                symbol, creature_name = match.groups()
+                creature_name_clean = creature_name.strip()
+                # Check if this is the enemy we're looking for (first one from TUI)
+                if creature_name_clean == enemies_from_tui[0]:
+                    enemy_symbol = symbol
+                    break
+        
+        if not enemy_symbol:
+            logger.debug(f"Could not find enemy symbol for {enemies_from_tui[0]}")
+            return '.'
+        
+        # Now scan the map for this specific enemy symbol
         lines = output.split('\n')
         player_pos = None
-        enemies = []
+        enemy_pos = None
         
-        # Find player position (@) and enemy positions (lowercase letters)
-        # IMPORTANT: Only scan the map area (left ~80 chars, rows 0-25) to avoid UI elements on the right
-        # The status panel on the right contains text like "o)", "d)", etc. that aren't real enemies
+        # Only scan the map area (rows 0-25, columns 0-79)
         for y, line in enumerate(lines):
-            if y > 25:  # Map area is roughly rows 0-25, status panel is on the right
-                continue
-            # Only scan up to column 80 to avoid status panel on the right
+            if y > 25:  # Map area ends around row 25-26
+                break
             for x in range(min(80, len(line))):
                 char = line[x]
                 if char == '@':
                     player_pos = (x, y)
-                # Enemy characters are lowercase letters (excluding dungeon characters)
-                # Note: Exclude specific UI letters like 'o', 'd' that appear in sidebars
-                elif char.islower() and char not in '.+=#-~,|odiabxpqmwc':
-                    enemies.append((x, y, char))
+                elif char == enemy_symbol:
+                    enemy_pos = (x, y)
         
-        # If we couldn't find the map in current output, try the last screen
-        if not player_pos and self.last_screen:
-            logger.debug("Map not found in current output, using last screen")
-            lines = self.last_screen.split('\n')
-            for y, line in enumerate(lines):
-                if y > 25:
-                    continue
-                for x in range(min(80, len(line))):
-                    char = line[x]
-                    if char == '@':
-                        player_pos = (x, y)
-                    elif char.islower() and char not in '.+=#-~,|odiabxpqmwc':
-                        enemies.append((x, y, char))
-        
-        if not player_pos or not enemies:
-            logger.debug(f"Could not find player or enemies on map (player_pos={player_pos}, enemies={len(enemies)})")
+        if not player_pos or not enemy_pos:
+            logger.debug(f"Could not find player or enemy '{enemy_symbol}' on map (player={player_pos}, enemy={enemy_pos})")
             return '.'
         
-        # Find the nearest enemy
+        # Calculate direction to enemy
         player_x, player_y = player_pos
-        nearest_enemy = None
-        nearest_distance = float('inf')
+        enemy_x, enemy_y = enemy_pos
         
-        for enemy_x, enemy_y, enemy_char in enemies:
-            # Calculate distance
-            distance = abs(enemy_x - player_x) + abs(enemy_y - player_y)  # Manhattan distance
-            if distance < nearest_distance and distance > 0:  # Exclude player's own position
-                nearest_distance = distance
-                nearest_enemy = (enemy_x, enemy_y, enemy_char)
-        
-        if not nearest_enemy:
-            logger.debug("No reachable enemy found")
-            return '.'
-        
-        enemy_x, enemy_y, enemy_char = nearest_enemy
         dx = 0 if enemy_x == player_x else (1 if enemy_x > player_x else -1)
         dy = 0 if enemy_y == player_y else (1 if enemy_y > player_y else -1)
         
@@ -1888,11 +2125,12 @@ class DCSSBot:
             (1, 1): 'n',    # down-right
         }
         
+        distance = abs(enemy_x - player_x) + abs(enemy_y - player_y)
         direction = direction_map.get((dx, dy), '.')
-        # Enhanced logging with detected enemy symbol for debugging
-        logger.debug(f"Map scan found enemy '{enemy_char}' at ({enemy_x}, {enemy_y}), player at ({player_x}, {player_y}), distance={nearest_distance}")
-        logger.info(f"🎯 Moving toward {enemy_char} (distance: {nearest_distance}, direction: {direction})")
-        return self._return_action(direction, f"Moving toward {enemy_char}")
+        
+        logger.debug(f"Map scan found enemy '{enemy_symbol}' ({enemies_from_tui[0]}) at ({enemy_x}, {enemy_y}), player at ({player_x}, {player_y}), distance={distance}")
+        logger.info(f"🎯 Moving toward {enemy_symbol} {enemies_from_tui[0]} (distance: {distance}, direction: {direction})")
+        return self._return_action(direction, f"Moving toward {enemy_symbol}")
 
     def _print_final_stats(self) -> None:
         """Print final game statistics to both console and log file."""

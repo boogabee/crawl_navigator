@@ -25,7 +25,7 @@ python3 -c "import pytest; import loguru; import pexpect; import blessed" && \
 
 # Run compilation check
 echo -e "${BLUE}Verifying Python syntax...${NC}"
-python3 -m py_compile *.py tests/*.py && \
+python3 -m py_compile main.py src/*.py src/**/*.py tests/*.py && \
     echo -e "${GREEN}✓ All files compile${NC}\n" || exit 1
 
 # Run tests

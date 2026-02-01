@@ -1,7 +1,7 @@
 """Unit tests for game state parsing."""
 
 import pytest
-from game_state import GameStateParser, GameState, Position
+from src.game_state import GameStateParser, GameState, Position
 
 
 @pytest.mark.unit

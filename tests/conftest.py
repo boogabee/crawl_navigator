@@ -17,21 +17,21 @@ def crawl_command():
 @pytest.fixture
 def char_creation_state_machine():
     """Provide a fresh CharacterCreationStateMachine instance."""
-    from char_creation_state_machine import CharacterCreationStateMachine
+    from src.state_machines.char_creation_state_machine import CharacterCreationStateMachine
     return CharacterCreationStateMachine()
 
 
 @pytest.fixture
 def game_state_tracker():
     """Provide a fresh GameStateMachine instance."""
-    from game_state_machine import GameStateMachine
+    from src.state_machines.game_state_machine import GameStateMachine
     return GameStateMachine()
 
 
 @pytest.fixture
 def game_state_parser():
     """Provide a fresh GameStateParser instance."""
-    from game_state import GameStateParser
+    from src.game_state import GameStateParser
     return GameStateParser()
 
 @pytest.fixture

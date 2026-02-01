@@ -1,0 +1,8 @@
+Inventory: 4/52 slots
+Hand Weapons
+ a - a +0 war axe (weapon)
+Armour
+ b - a +0 scale mail (worn)
+ c - a +0 buckler (worn)
+Potions
+ d - a potion of might

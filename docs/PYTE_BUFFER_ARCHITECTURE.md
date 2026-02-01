@@ -40,7 +40,7 @@ Now when you parse this text, you find "J   endoplasm" and "r   rat" perfectly.
 ```python
 while self.move_count < max_steps:
     # 1. GET RAW OUTPUT (DELTA - only ANSI code changes)
-    response = self.ssh_client.read_output(timeout=3.0)
+    response = self.local_client.read_output(timeout=3.0)
     
     if response:
         # 2. ACCUMULATE INTO PYTE BUFFER

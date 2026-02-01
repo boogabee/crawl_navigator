@@ -1,8 +1,8 @@
 """Tests for python-statemachine enhanced state machines."""
 
 import pytest
-from char_creation_state_machine import CharacterCreationStateMachine
-from game_state_machine import GameStateMachine
+from src.state_machines.char_creation_state_machine import CharacterCreationStateMachine
+from src.state_machines.game_state_machine import GameStateMachine
 
 
 @pytest.mark.unit

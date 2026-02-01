@@ -49,9 +49,6 @@ Replace `USERNAME` with your GitHub username and `REPONAME` with your repository
 # Add remote origin (HTTPS method)
 git remote add origin https://github.com/USERNAME/REPONAME.git
 
-# Or use SSH if you have SSH keys configured
-git remote add origin git@github.com:USERNAME/REPONAME.git
-
 # Verify the remote is set
 git remote -v
 ```

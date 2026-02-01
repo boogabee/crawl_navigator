@@ -22,7 +22,7 @@
    ```
 
 3. **Configure bot** (optional):
-   Edit `credentials.py` to change Crawl command if needed.
+   Edit `src/utils/credentials.py` to change Crawl command if needed.
 
 ## Running the Bot
 
@@ -44,6 +44,15 @@ python main.py --debug
 ### Combine Options
 ```bash
 python main.py --steps 50 --debug
+```
+
+### Run Tests
+```bash
+bash scripts/run_tests.sh
+```
+Or with pytest directly:
+```bash
+pytest tests/ -v
 ```
 
 ## Screenshot Logs

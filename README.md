@@ -9,6 +9,10 @@ An automated bot for playing Dungeon Crawl Stone Soup using a local installation
 ✅ **Unified Display** - Shows Crawl TUI with integrated 12-line activity panel
 ✅ **Activity Logging** - Timestamped, color-coded bot actions and events in real-time
 ✅ **TUI-Based Threat Detection** - Detects enemies from game display (not unreliable message stream)
+✅ **Item Pickup System** - Automatically collects gold and items from defeated enemies
+✅ **Inventory Tracking** - Parses and tracks inventory items with type detection
+✅ **Equipment System** - Automatically equips better armor to improve AC (Armor Class)
+✅ **Potion Identification** - Identifies unknown potions by quaffing (game-session specific)
 ✅ **Action Recording** - Records all moves and game states to files
 ✅ **Game Loop** - Executes gameplay with configurable step limits and debug logging
 
@@ -20,6 +24,24 @@ The bot is **fully functional** and successfully:
 - Handles character creation: species/class/background selection with automatic progression
   - Captures screenshot of each character creation menu (species, class, background, skills)
 - Plays the game by sending movement/action commands
+- **Item Pickup & Inventory** (v0.3.0): 
+  - Detects items on ground ("You see here", "Things that are here:")
+  - Sends 'g' command to grab items automatically
+  - Collects gold for future resource management
+  - Parses inventory screen ('i' command) to track items
+- **Equipment System** (v1.6): Automatic armor optimization
+  - Parses AC values from armor items (e.g., "+2 leather armour" → AC -2)
+  - Detects equipment slots (body, head, hands, feet, neck)
+  - Compares inventory armor against equipped items
+  - Automatically sends 'e' command to equip better armor
+  - Responds to equip prompts with correct slot letters
+  - Tracks all equipped items and calculates total AC protection
+  - See [EQUIPMENT_SYSTEM.md](EQUIPMENT_SYSTEM.md) for detailed documentation
+- **Potion Identification** (v0.3.0):
+  - Identifies unknown potions by quaffing them
+  - Detects potion effect from game messages
+  - Maintains color-to-effect mapping for current game session
+  - Respects DCSS design: effects change per game, mapping is session-specific
 - **TUI-Based Decisions** (v1.3): Detects threats, items, and game state from TUI display (not message stream)
   - Enemy detection parses monsters section from TUI
   - Health/status tracked from TUI status line
@@ -28,6 +50,7 @@ The bot is **fully functional** and successfully:
 - Logs all bot actions with timestamps and severity levels
 - Uses reliable timeout-based I/O with proper terminal emulation mode for stable gameplay
 - Gameplay loop runs without crashes and properly captures all screens
+
 
 ## Installation
 
@@ -38,7 +61,6 @@ The bot is **fully functional** and successfully:
    ```
 
 3. Credentials are pre-configured in `credentials.py`:
-   - SSH: User `crawl` with SSH key authentication
    - Game: Account `boogabee` / `stonesoup`
 
 ## Usage

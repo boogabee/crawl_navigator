@@ -8,18 +8,18 @@ from credentials import CRAWL_COMMAND
 bot = DCSSBot(crawl_command=CRAWL_COMMAND)
 
 # Just do one step of the run  to see what's in the screen
-if not bot.ssh_client.connect():
+if not bot.local_client.connect():
     print("Failed to connect")
     sys.exit(1)
 
 # Handle startup
 if not bot._local_startup():
     print("Failed startup")
-    bot.ssh_client.disconnect()
+    bot.local_client.disconnect()
     sys.exit(1)
 
 # Now read one step
-output = bot.ssh_client.read_output(timeout=2.5)
+output = bot.local_client.read_output(timeout=2.5)
 if output:
     bot.last_screen = output
     bot.screen_buffer.update_from_output(output)
@@ -34,4 +34,4 @@ if output:
     else:
         print(f"Visual screen (first 500 chars):\n{visual[:500]}")
 
-bot.ssh_client.disconnect()
+bot.local_client.disconnect()

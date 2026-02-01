@@ -6,8 +6,8 @@ import logging
 import sys
 
 from loguru import logger
-from credentials import CRAWL_COMMAND
-from bot import DCSSBot
+from src.utils.credentials import CRAWL_COMMAND
+from src.bot import DCSSBot
 
 # Configure standard logging to go to stderr, not stdout (so TUI can use stdout)
 logging.basicConfig(
@@ -37,6 +37,8 @@ def main():
                        help='Enable debug logging')
     parser.add_argument('--crawl-cmd', default=CRAWL_COMMAND,
                        help='Command to run local Crawl')
+    parser.add_argument('--use-engine', action='store_true',
+                       help='Use DecisionEngine for decisions (Phase 3b testing)')
     
     args = parser.parse_args()
     
@@ -55,6 +57,13 @@ def main():
     # Create bot for local Crawl execution
     std_logger.info(f"Execution mode: LOCAL (command: {args.crawl_cmd})")
     bot = DCSSBot(crawl_command=args.crawl_cmd)
+    
+    # Enable DecisionEngine if requested (Phase 3b)
+    bot.use_decision_engine = args.use_engine
+    if args.use_engine:
+        std_logger.info("🚀 DecisionEngine ENABLED (Phase 3b testing mode)")
+    else:
+        std_logger.info("📖 Using legacy _decide_action() implementation")
     
     bot.run(max_steps=args.steps)
 

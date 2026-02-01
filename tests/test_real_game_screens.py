@@ -1,7 +1,7 @@
 """Tests using actual game screen output for validation."""
 
 import pytest
-from bot import DCSSBot
+from src.bot import DCSSBot
 
 
 class TestEnemyDetectionRealScreens:
@@ -205,3 +205,85 @@ class TestScreenParsing:
             enemies = bot._extract_all_enemies_from_tui(message)
             assert "gold" not in enemies, f"Gold item incorrectly detected as enemy from: {message}"
             assert len(enemies) == 0, f"Expected no enemies in inventory message, got {enemies}"
+
+    def test_equipment_status_not_detected_as_enemy(self):
+        """
+        Regression test for issue where bot attempted to attack "Nothing quivered".
+        
+        "Nothing quivered" appears in the equipment/inventory section of the TUI
+        (e.g., "a) +0 war axe" followed by "Nothing quivered"), not in the monsters
+        section. This should not be detected as an enemy. The word "Nothing" must be
+        in invalid_symbols and "quivered" must be in item_keywords filter.
+        """
+        bot = DCSSBot()
+        
+        # Equipment status messages should not be confused with actual enemies
+        test_cases = [
+            "a) +0 war axe\nNothing quivered",
+            "Nothing quivered",
+            "Nothing 0 quivered",  # Grouped format with count
+        ]
+        
+        for message in test_cases:
+            enemies = bot._extract_all_enemies_from_tui(message)
+            assert "quivered" not in enemies, f"'quivered' incorrectly detected as enemy from: {message}"
+            assert len(enemies) == 0, f"Expected no enemies in equipment status message, got {enemies}"
+
+    def test_shop_detection_basic(self):
+        """Test that bot detects when entering a shop interface."""
+        bot = DCSSBot()
+        
+        # Typical shop screen with welcome message and exit command
+        shop_screen = """Welcome to Bamynumu's Jewellery Shop! What would you like to do?
+ a -  360 gold   an amulet of regeneration (unknown)
+ b -  584 gold   the ring "Hidwoff" {rF+ Will- MP+9 Dex+5 Slay+2}
+You have 39 gold pieces.
+[Esc] exit          [!] buy|examine items  [a-k] select item for purchase
+[/] sort (type)     [Enter] make purchase  [A-K] put item on shopping list"""
+        
+        # Should detect as shop
+        is_shop = bot._is_in_shop(shop_screen)
+        assert is_shop is True, "Should detect shop interface"
+    
+    def test_shop_detection_with_ansi(self):
+        """Test that bot detects shop even with ANSI color codes."""
+        bot = DCSSBot()
+        
+        # Shop screen with ANSI escape codes
+        shop_screen = "\x1b[32mWelcome to Bamynumu's Jewellery Shop!\x1b[0m What would you like to do?\n a -  360 gold   an amulet\n\x1b[1m[Esc] exit\x1b[0m"
+        
+        # Should detect as shop (ANSI codes are cleaned before checking)
+        is_shop = bot._is_in_shop(shop_screen)
+        assert is_shop is True, "Should detect shop interface even with ANSI codes"
+    
+    def test_non_shop_screen_not_detected(self):
+        """Test that normal gameplay screens are not detected as shops."""
+        bot = DCSSBot()
+        
+        # Normal gameplay screen (no shop)
+        normal_screen = """lvorsvm the Skirmisher
+Health: 29/29
+Magic:  1/1
+Place: Dungeon:1
+J   endoplasm
+r   rat
+
+You kill the kobold!"""
+        
+        # Should not detect as shop
+        is_shop = bot._is_in_shop(normal_screen)
+        assert is_shop is False, "Should not detect normal gameplay as shop"
+    
+    def test_shop_exit_command(self):
+        """Test that deciding action in shop returns Escape key."""
+        bot = DCSSBot()
+        
+        shop_screen = """Welcome to Bamynumu's Jewellery Shop! What would you like to do?
+ a -  360 gold   an amulet of regeneration
+ b -  584 gold   the ring "Hidwoff"
+You have 39 gold pieces.
+[Esc] exit          [!] buy|examine items"""
+        
+        # Bot should exit the shop with Escape
+        action = bot._is_in_shop(shop_screen)
+        assert action is True, "Shop detection should return True"

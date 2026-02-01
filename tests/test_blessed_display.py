@@ -1,7 +1,7 @@
 """Tests for blessed-based display utilities."""
 
 import pytest
-from bot_display import BotDisplay, DebugDisplay, ScreenBuffer
+from examples.bot_display import BotDisplay, DebugDisplay, ScreenBuffer
 
 
 @pytest.mark.unit

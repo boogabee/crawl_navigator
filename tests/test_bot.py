@@ -16,7 +16,7 @@ from real_screens import (
 @pytest.fixture
 def mock_local_client():
     """Mock the LocalCrawlClient to avoid actual Crawl startup."""
-    with patch('bot.LocalCrawlClient') as mock:
+    with patch('src.bot.LocalCrawlClient') as mock:
         instance = MagicMock()
         mock.return_value = instance
         yield mock
@@ -27,13 +27,13 @@ class TestBotInitialization:
     
     def test_bot_initializes(self, mock_local_client):
         """Test that bot initializes without errors."""
-        from bot import DCSSBot
+        from src.bot import DCSSBot
         bot = DCSSBot()
         assert bot is not None
     
     def test_bot_has_char_creation_state(self, mock_local_client):
         """Test that bot has char_creation_state attribute (not char_creation_state_machine)."""
-        from bot import DCSSBot
+        from src.bot import DCSSBot
         bot = DCSSBot()
         assert hasattr(bot, 'char_creation_state'), "Bot should have 'char_creation_state' attribute"
         
@@ -43,19 +43,19 @@ class TestBotInitialization:
     
     def test_char_creation_state_is_state_machine(self, mock_local_client):
         """Test that char_creation_state is a CharacterCreationStateMachine instance."""
-        from bot import DCSSBot
-        from char_creation_state_machine import CharacterCreationStateMachine
+        from src.bot import DCSSBot
+        from src.state_machines.char_creation_state_machine import CharacterCreationStateMachine
         bot = DCSSBot()
         assert isinstance(bot.char_creation_state, CharacterCreationStateMachine), \
             "char_creation_state should be a CharacterCreationStateMachine instance"
     
     def test_bot_has_required_attributes(self, mock_local_client):
         """Test that bot has all required attributes for startup."""
-        from bot import DCSSBot
+        from src.bot import DCSSBot
         bot = DCSSBot()
         
         required_attrs = [
-            'ssh_client',
+            'local_client',
             'parser',
             'state_tracker',
             'char_creation_state',
@@ -69,7 +69,7 @@ class TestBotInitialization:
     
     def test_startup_sequence_uses_correct_attribute(self, mock_local_client):
         """Test that _local_startup method uses the correct attribute name."""
-        from bot import DCSSBot
+        from src.bot import DCSSBot
         import inspect
         
         bot = DCSSBot()
@@ -88,7 +88,7 @@ class TestLoginSequence:
     
     def test_startup_screen_detection(self, mock_local_client):
         """Test that startup screen with 'Enter your name' is detected."""
-        from bot import DCSSBot
+        from src.bot import DCSSBot
         
         startup_screen = get_startup_screen_main()
         mock_client = mock_local_client.return_value
@@ -106,7 +106,7 @@ class TestLoginSequence:
     
     def test_menu_screen_detection(self, mock_local_client):
         """Test that menu screen is detected."""
-        from bot import DCSSBot
+        from src.bot import DCSSBot
         
         startup_screen = get_startup_screen_main()
         mock_client = mock_local_client.return_value
@@ -125,7 +125,7 @@ class TestLoginSequence:
     
     def test_character_creation_flow_startup_to_species(self, mock_local_client):
         """Test the flow from startup screen to species selection."""
-        from bot import DCSSBot
+        from src.bot import DCSSBot
         
         startup_screen = get_startup_screen_main()
         species_screen = get_character_creation_species()
@@ -153,7 +153,7 @@ class TestLoginSequence:
     
     def test_full_character_creation_sequence(self, mock_local_client):
         """Test the complete character creation sequence through multiple states."""
-        from bot import DCSSBot
+        from src.bot import DCSSBot
         
         startup_screen = get_startup_screen_main()
         species_screen = get_character_creation_species()
@@ -178,7 +178,7 @@ class TestLoginSequence:
     
     def test_state_machine_reset_to_startup(self, mock_local_client):
         """Test that state machine resets properly to startup state."""
-        from bot import DCSSBot
+        from src.bot import DCSSBot
         
         bot = DCSSBot()
         state_machine = bot.char_creation_state
@@ -195,7 +195,7 @@ class TestLoginSequence:
     
     def test_gameplay_detection_from_state_machine(self, mock_local_client):
         """Test that gameplay screen is properly detected."""
-        from bot import DCSSBot
+        from src.bot import DCSSBot
         
         species_screen = get_character_creation_species()
         

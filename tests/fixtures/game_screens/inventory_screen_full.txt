@@ -1,0 +1,12 @@
+Inventory: 6/52 slots
+Hand Weapons
+ a - a +0 war axe (weapon)
+Armour
+ b - a +0 scale mail (worn)
+ c - a +0 buckler (worn)
+Jewellery
+ f - a +4 ring of protection
+Scrolls
+ e - a scroll of teleportation {unknown}
+Potions
+ d - a potion of might
